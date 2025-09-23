@@ -244,23 +244,36 @@ def habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=None):
     return False  # libre en esas fechas
 
 def imprimir_producto(producto):
-    columnas = ["CODIGO", "NOMBRE", "PRECIO", "STOCK", "ALERTA", "PINMEDIATO"]
+    if not producto:
+        print("\n❌ No hay producto para mostrar.")
+        return
     print("\nProducto seleccionado:")
-    for col, val in zip(columnas, producto):
+    columnas_a_mostrar = {
+        "CODIGO": "CODIGO",
+        "NOMBRE": "NOMBRE",
+        "PRECIO": "PRECIO",
+        "STOCK": "STOCK",
+        "ALERTA": "ALERTA",
+        "PINMEDIATO": "PINMEDIATO"
+    }
+    for col_key, col_display in columnas_a_mostrar.items():
+        val = producto.get(col_key) # Usamos .get() para evitar errores si la clave no existe
         display_val = val
-        if col == "NOMBRE":
+        
+        if col_key == "NOMBRE":
             if isinstance(val, str):
                 display_val = val.capitalize()
-        elif col == "PRECIO":
+        elif col_key == "PRECIO":
             display_val = f"R {val:.2f}"
-        elif col == "STOCK":
+        elif col_key == "STOCK":
             if val == -1:
                 display_val = "∞"
-        elif col == "PINMEDIATO":
+        elif col_key == "PINMEDIATO":
             display_val = "Sí" if val == 1 else "No"
-        elif col == "ALERTA":
+        elif col_key == "ALERTA":
             display_val = str(val) if val is not None else "-"
-        print(f"{col:<15}: {display_val}")
+            
+        print(f"{col_display:<15}: {display_val}")
 
 def imprimir_productos(productos):
     if not productos:
@@ -277,16 +290,21 @@ def imprimir_productos(productos):
 
     # Imprimir cada producto en una fila
     for producto in productos:
-        codigo, nombre, precio, stock, _ = producto  # ignoramos pinmediato
+        # Asegúrate de que los datos estén en el formato correcto para la impresión
+        # Ya que db.obtener_todos devuelve una lista de diccionarios, es mejor acceder por claves
+        # para evitar errores de "too many values to unpack".
+        nombre_original = producto['NOMBRE']
+        
+        # --- CAPITALIZACIÓN Y TRUNCADO PARA IMPRESIÓN ---
+        # Asegura que el nombre no exceda los 35 caracteres definidos en el header_format
+        nombre_display = nombre_original.capitalize()
+        if len(nombre_display) > 35:
+            nombre_display = nombre_display[:32] + '...'
 
-        # --- CAPITALIZACIÓN PARA IMPRESIÓN ---
-        nombre_display = nombre.capitalize()
-        nombre_display = (nombre_display[:32] + '...') if len(nombre_display) > 35 else nombre_display
+        precio_display = f"R {producto['PRECIO']:.2f}"
+        stock_display = "∞" if producto['STOCK'] == -1 else str(producto['STOCK'])
 
-        precio_display = f"R {precio:.2f}"
-        stock_display = "∞" if stock == -1 else str(stock)
-
-        print(header_format.format(codigo, nombre_display, precio_display, stock_display))
+        print(header_format.format(producto['CODIGO'], nombre_display, precio_display, stock_display))
 
     print(line_separator)
     input("\nPresioná Enter para continuar...")

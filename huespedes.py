@@ -3,7 +3,7 @@ import usuarios
 from datetime import datetime, date
 from db import db
 from unidecode import unidecode
-from utiles import HABITACIONES,registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo
+from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo
 
 @usuarios.requiere_acceso(1)
 def nuevo_huesped():

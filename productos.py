@@ -9,23 +9,22 @@ from utiles import pedir_precio, pedir_entero, pedir_confirmacion, imprimir_prod
 def nuevo_producto():
     while True:
         respuesta_codigo = input("\nIngrese el código de producto, deje vacio para autogenerar, ó (0) para cancelar : ")
-        if respuesta_codigo:
+        try:
             if respuesta_codigo == "0":
                 return
-            if not respuesta_codigo.isdigit():
-                print("\n⚠️  El código debe ser un número positivo.")
-                continue
-            codigo = int(respuesta_codigo)
-            existe = db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
-            if existe:
-                print("\n⚠️  Ya existe un producto con ese código.")
-                continue
+            if respuesta_codigo:
+                if not respuesta_codigo.isdigit():
+                    print("\n⚠️  El código debe ser un número positivo.")
+                    continue
+                codigo = int(respuesta_codigo)
             else:
-                break
-        else:
-            ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
-            codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
-            break
+                ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
+                codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
+            break # Exit the loop after finding a valid code
+        except Exception as e:
+            print(f"❌ Error al procesar el código: {e}")
+            continue
+
     while True:
         respuesta_nombre = input("Escriba el nombre del producto ó (0) para cancelar: ").strip()
         if respuesta_nombre == "0":
@@ -46,8 +45,11 @@ def nuevo_producto():
     alerta = pedir_entero("Ingrese el nivel de alerta de stock ó deje vacío para usar el valor por defecto (5): ", minimo=1, defecto=5)
     respuesta_pago_inmediato = pedir_confirmacion("¿El producto se debe pagar en el momento? (si/no): ", defecto="no")
     pago_inmediato = 0 if respuesta_pago_inmediato != "si" else 1
-    data = {"codigo": codigo, "nombre": nombre, "precio": precio, "stock": stock, "pinmediato": pago_inmediato, "alerta": alerta}
+    
     try:
+        data = {"codigo": codigo, "nombre": nombre, "precio": precio, "stock": stock, "pinmediato": pago_inmediato, "alerta": alerta}
+        # We'll try to insert the product
+        # and let the database tell us if it already exists.
         db.iniciar()
         sql = "INSERT INTO PRODUCTOS (CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, PINMEDIATO) VALUES (?, ?, ?, ?, ?, ?)"
         db.ejecutar(sql, (data["codigo"], data["nombre"], data["precio"], data["stock"], data["alerta"], data["pinmediato"]))
@@ -65,7 +67,6 @@ def nuevo_producto():
 def listado_productos():
     while True:
         opcion = input("\n¿Cómo desea ordenar los productos? Por código (1), por nombre (2) ó cancelar (0): ").strip()
-
         if opcion == "0":
             return
         elif opcion == "1":
@@ -76,14 +77,18 @@ def listado_productos():
             break
         else:
             print("\n⚠️  Opción inválida. Intente nuevamente.")
-
-    productos = db.obtener_todos(f"SELECT * FROM PRODUCTOS ORDER BY {orden}")
-    if not productos:
-        print("\n❌ No hay productos registrados.")
+        
+    try:
+        productos = db.obtener_todos(f"SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS ORDER BY {orden}")
+        if not productos:
+            print("\n❌ No hay productos registrados.")
+            return
+        else:        
+            imprimir_productos(productos)
+            return
+    except Exception as e:
+        print(f"\n❌ Error al obtener el listado de productos: {e}")
         return
-    
-    imprimir_productos(productos)
-    return
 
 @usuarios.requiere_acceso(0)
 def buscar_producto():
@@ -95,7 +100,7 @@ def buscar_producto():
         elif criterio == "0":
             return
         elif criterio == "*":
-            productos = db.obtener_todos("SELECT * FROM PRODUCTOS")
+            productos = db.obtener_todos("SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS")
             if not productos:
                 print("\n❌ No hay productos registrados.")
                 return
@@ -103,7 +108,7 @@ def buscar_producto():
             return
         elif criterio.isdigit():
             codigo = int(criterio)
-            query = "SELECT * FROM PRODUCTOS WHERE CODIGO = ?"
+            query = "SELECT SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?"
             producto = db.obtener_uno(query, (codigo,))
             if not producto:
                 print("\n⚠️  No se encontró un producto con ese código.")
@@ -112,29 +117,34 @@ def buscar_producto():
                 imprimir_producto(producto)
                 return
         else:
-            criterios = unidecode(criterio).lower().split()
-            if not criterios:
-                print("\n⚠️  Debe ingresar al menos una palabra")
-                continue
-            else:
-                where_clauses = ["LOWER(NOMBRE) LIKE ?"] * len(criterios)
-                params = [f"%{palabra}%" for palabra in criterios]
-
-                query = f"SELECT * FROM PRODUCTOS WHERE {' OR '.join(where_clauses)}"
-                productos = db.obtener_todos(query, params)
-
-                # Ordenar por relevancia (cantidad de palabras que coinciden en el nombre)
-                resultados = [(prod, sum(1 for palabra in criterios if palabra in prod["NOMBRE"].lower())) for prod in productos]
-                resultados.sort(key=lambda x: x[1], reverse=True)
-
-                if resultados:
-                    print(f"\nResultados para: '{criterio}'\n")
-                    productos_ordenados = [p for p, _ in resultados]
-                    imprimir_productos(productos_ordenados)
-                    return
+            try:
+                criterio_limpio = re.sub(r"[^a-zA-Z0-9\s/]", "", unidecode(criterio).lower().replace('-', ' ').replace('_', ' ').replace('/', ' '))
+                criterios = criterio_limpio.split()
+                if not criterios:
+                    print("\n⚠️  Debe ingresar al menos una palabra")
+                    continue
                 else:
-                    print("\n❌ No se encontraron productos que coincidan con la búsqueda.")
-                    return
+                    where_clauses = ["LOWER(NOMBRE) LIKE ?"] * len(criterios)
+                    params = [f"%{palabra}%" for palabra in criterios]
+
+                    query = f"SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE {' OR '.join(where_clauses)}"
+                    productos = db.obtener_todos(query, params)
+
+                    # Ordenar por relevancia (cantidad de palabras que coinciden en el nombre)
+                    resultados = [(prod, sum(1 for palabra in criterios if palabra in prod["NOMBRE"].lower())) for prod in productos]
+                    resultados.sort(key=lambda x: x[1], reverse=True)
+
+                    if resultados:
+                        print(f"\nResultados para: '{criterio}'\n")
+                        productos_ordenados = [p for p, _ in resultados]
+                        imprimir_productos(productos_ordenados)
+                        return
+                    else:
+                        print("\n❌ No se encontraron productos que coincidan con la búsqueda.")
+                        return
+            except Exception as e:
+                # Si algo sale mal, imprime el error y sigue el programa
+                print(f"\n❌ Error al realizar la búsqueda: {e}")
 
 def actualizar_producto_db(database, codigo, campo, valor):
     database.ejecutar(f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?", (valor, codigo))
@@ -197,10 +207,9 @@ def editar_producto():
             try:
                 db.iniciar()
                 actualizar_producto_db(db, codigo_original, "CODIGO", codigo)
-                db.confirmar()
                 marca_tiempo = marca_de_tiempo()
                 log = (
-                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.USUARIO_ACTUAL}:\n"
+                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
                     f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
                     f"Nombre: {estado_anterior['NOMBRE']}, "
                     f"Precio: {estado_anterior['PRECIO']}, "
@@ -209,6 +218,7 @@ def editar_producto():
                     f"Campo modificado -> \"CODIGO\": {nuevo_codigo}"
                 )
                 registrar_log("productos_editados.log", log)
+                db.confirmar()
                 print(f"\n✔ Código actualizado de {codigo_original} a {codigo}.")
             except Exception as e:
                 db.revertir()
@@ -222,17 +232,16 @@ def editar_producto():
                     continue
                 nombre_unidecode = unidecode(respuesta_nombre)
                 nombre_limpio = nombre_unidecode.replace('-', ' ').replace('_', ' ')
-                nombre = re.sub(r"[^a-zA-Z0-9\s]", "", nombre_limpio).lower()
+                nombre = re.sub(r"[^a-zA-Z0-9\s/]", "", nombre_limpio).lower()
                 if not nombre.strip(): # Verifica que el nombre no quede vacío después de la limpieza
                     print("\n⚠️  El nombre del producto no puede contener solo caracteres o signos.")
                     continue
                 try:
                     db.iniciar()
                     actualizar_producto_db(db, codigo, "NOMBRE", nombre)
-                    db.confirmar()
                     marca_tiempo = marca_de_tiempo()
                     log = (
-                        f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.USUARIO_ACTUAL}:\n"
+                        f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
                         f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
                         f"Nombre: {estado_anterior['NOMBRE']}, "
                         f"Precio: {estado_anterior['PRECIO']}, "
@@ -241,6 +250,7 @@ def editar_producto():
                         f"Campo modificado -> \"NOMBRE\": {nombre}"
                     )
                     registrar_log("productos_editados.log", log)
+                    db.confirmar()
                     print("\n✔ Nombre actualizado.")
                 except Exception as e:
                     db.revertir()
@@ -251,10 +261,9 @@ def editar_producto():
             try:
                 db.iniciar()
                 actualizar_producto_db(db, codigo, "PRECIO", respuesta_precio)
-                db.confirmar()
                 marca_tiempo = marca_de_tiempo()
                 log = (
-                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.USUARIO_ACTUAL}:\n"
+                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
                     f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
                     f"Nombre: {estado_anterior['NOMBRE']}, "
                     f"Precio: {estado_anterior['PRECIO']}, "
@@ -263,6 +272,7 @@ def editar_producto():
                     f"Campo modificado -> \"PRECIO\": {respuesta_precio}"
                 )
                 registrar_log("productos_editados.log", log)
+                db.confirmar()
                 print("\n✔ Precio actualizado.")
             except Exception as e:
                 db.revertir()
@@ -276,10 +286,9 @@ def editar_producto():
             try:
                 db.iniciar()
                 actualizar_producto_db(db, codigo, "STOCK", stock)
-                db.confirmar()
                 marca_tiempo = marca_de_tiempo()
                 log = (
-                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.USUARIO_ACTUAL}:\n"
+                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
                     f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
                     f"Nombre: {estado_anterior['NOMBRE']}, "
                     f"Precio: {estado_anterior['PRECIO']}, "
@@ -288,6 +297,7 @@ def editar_producto():
                     f"Campo modificado -> \"STOCK\": {stock}"
                 )
                 registrar_log("productos_editados.log", log)
+                db.confirmar()
                 print("\n✔ Stock actualizado.")
             except sqlite3.IntegrityError:
                 db.revertir()
@@ -302,10 +312,9 @@ def editar_producto():
                 try:
                     db.iniciar()
                     actualizar_producto_db(db, codigo, "ALERTA", alerta)
-                    db.confirmar()
                     marca_tiempo = marca_de_tiempo()
                     log = (
-                        f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.USUARIO_ACTUAL}:\n"
+                        f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
                         f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
                         f"Nombre: {estado_anterior['NOMBRE']}, "
                         f"Precio: {estado_anterior['PRECIO']}, "
@@ -314,6 +323,7 @@ def editar_producto():
                         f"Campo modificado -> \"ALERTA\": {alerta}"
                     )
                     registrar_log("productos_editados.log", log)
+                    db.confirmar()
                     print("\n✔ Alerta de stock actualizada.")
                 except Exception as e:
                     db.revertir()
@@ -332,43 +342,50 @@ def eliminar_producto():
         if codigo == "0":
             print("\n❌ Eliminación cancelada.")
             return
-        if not codigo.isdigit():
-            print("\n⚠️  Código inválido.")
-            continue
-
-        codigo = int(codigo)
-        producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
-        if not producto:
-            print("\n⚠️  Producto no encontrado.")
-            continue
-
-        print("Producto seleccionado: ")
-        imprimir_producto(producto)
-
-        confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que desea eliminar este producto? (si/no): ")
-        if confirmacion == "si":
-            try:
-                db.iniciar()
-                db.ejecutar("DELETE FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
-                db.confirmar()
-                marca_tiempo = marca_de_tiempo()
-                log = (
-                    f"[{marca_tiempo}] PRODUCTO ELIMINADO por {usuarios.USUARIO_ACTUAL}:\n"
-                    f"Código: {producto['CODIGO']} | "
-                    f"Nombre: {producto['NOMBRE']} | "
-                    f"Precio: {producto['PRECIO']} | "
-                    f"Stock: {producto['STOCK']}"
-                )
-                registrar_log("productos_eliminados.log", log)
-                print("\n✔ Producto eliminado.")
-            except sqlite3.IntegrityError:
-                db.revertir()
-                print(f"\n❌ No se puede eliminar el producto {codigo}: tiene consumos o cortesías asociadas.")
-            except Exception as e:
-                db.revertir()
-                print(f"\n❌ Error al eliminar el producto: {e}")
-            return
         
-        else:
-            print("\n❌ Eliminación cancelada.")
-        return
+        try:
+            if not codigo.isdigit():
+                print("\n⚠️  Código inválido.")
+                continue
+
+            codigo = int(codigo)
+
+            producto = db.obtener_uno("SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
+            if not producto:
+                print("\n⚠️  Producto no encontrado.")
+                continue
+
+            print("Producto seleccionado: ")
+            imprimir_producto(producto)
+
+            confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que desea eliminar este producto? (si/no): ")
+            if confirmacion == "si":
+                try:
+                    db.iniciar()
+                    db.ejecutar("DELETE FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
+                    marca_tiempo = marca_de_tiempo()
+                    log = (
+                        f"[{marca_tiempo}] PRODUCTO ELIMINADO por {usuarios.USUARIO_ACTUAL}:\n"
+                        f"Código: {producto['CODIGO']} | "
+                        f"Nombre: {producto['NOMBRE']} | "
+                        f"Precio: {producto['PRECIO']} | "
+                        f"Stock: {producto['STOCK']}"
+                    )
+                    registrar_log("productos_eliminados.log", log)
+                    print("\n✔ Producto eliminado.")
+                    db.confirmar()
+                    return
+                except sqlite3.IntegrityError:
+                    print(f"\n❌ No se puede eliminar el producto {codigo}: tiene consumos o cortesías asociadas.")
+                    db.revertir()
+                    return
+                except Exception as e:
+                    print(f"\n❌ Ocurrió un error inesperado al eliminar el producto: {e}")
+                    db.revertir()
+                    return
+            else:
+                print("\n❌ Eliminación cancelada.")
+                return
+        except Exception as e:
+            print(f"\n❌ Ocurrió un error inesperado al procesar la solicitud: {e}")
+            continue # Volvemos al inicio del bucle si hay un error

@@ -6,21 +6,66 @@ from functools import wraps
 from getpass import getpass
 from utiles import pedir_entero, pedir_confirmacion
 
-USUARIO_ACTUAL = "Observador"
-NIVEL_ACCESO_ACTUAL = 0
-SESION_ACTIVA = False 
-ULTIMA_AUTENTICACION = 0
-DURACION_SESION = {
-    0: 0,        # Observador (no requiere sesión)
-    1: 300,      # Operario -> 5 minutos
-    2: 300,      # Gerente -> 5 minutos
-    3: 300       # Administrador -> 5 minutos
-}
+class SesionActiva:
+    def __init__(self):
+        self.usuario = "Observador"
+        self.nivel_acceso = 0
+        self.sesion_activa = False
+        self.ultima_autenticacion = 0
+        self.duracion_sesion = {
+            0: 0,
+            1: 300,
+            2: 300,
+            3: 300
+        }
+    
+    def verificar_acceso(self, nivel_requerido):
+        # Verifica si el usuario tiene permiso y si la sesión temporal sigue activa.
+        
+        # Verifica si el usuario tiene permiso
+        if self.nivel_acceso < nivel_requerido:
+            return False, "permiso"
+        
+        # Si el nivel requerido es 0, no necesita sesión activa
+        if nivel_requerido == 0:
+            return True, None
+        
+        # Si tiene el permiso, verifica si la sesión está activa
+        if not self.sesion_activa:
+            return False, "inactiva"
+        
+        # Finalmente, verifica si la sesión temporal ha expirado
+        duracion = self.duracion_sesion.get(self.nivel_acceso, 300)
+        if time.time() - self.ultima_autenticacion > duracion > 0:
+            self.cerrar()
+            return False, "expirada"
+        
+        return True, None
+    
+    def iniciar(self, usuario, nivel_acceso):
+        # Inicializa la sesión
+        self.usuario = usuario
+        self.nivel_acceso = nivel_acceso
+        self.sesion_activa = True
+        self.ultima_autenticacion = time.time()
+    
+    def cerrar(self):
+        """Limpia el estado de la sesión."""
+        self.usuario = "Observador"
+        self.nivel_acceso = 0
+        self.sesion_activa = False
+        self.ultima_autenticacion = 0
+        print("\n👋 Sesión cerrada.")
+    
+    def refrescar(self):
+        """Actualiza el tiempo de la última autenticación."""
+        if self.sesion_activa:
+            self.ultima_autenticacion = time.time()
+
+sesion = SesionActiva()
 
 def login(usuario, contraseña):
-    """Verifica las credenciales y establece la sesión."""
-    global USUARIO_ACTUAL, NIVEL_ACCESO_ACTUAL, SESION_ACTIVA, ULTIMA_AUTENTICACION
-
+    # Verifica las credenciales y establece la sesión.
     usuario_en_db = db.obtener_uno("SELECT CONTRASEÑA_HASH, NIVEL_DE_ACCESO FROM USUARIOS WHERE USUARIO=?", (usuario,))
 
     if usuario_en_db:
@@ -28,90 +73,61 @@ def login(usuario, contraseña):
         nivel_de_acceso = usuario_en_db["NIVEL_DE_ACCESO"]
 
         if bcrypt.checkpw(contraseña.encode('utf-8'), contraseña_hash.encode('utf-8')):
-            USUARIO_ACTUAL = usuario
-            NIVEL_ACCESO_ACTUAL = nivel_de_acceso
-            SESION_ACTIVA = True
-            ULTIMA_AUTENTICACION = time.time()
-            print(f"\n✔ Inicio de sesión exitoso. Bienvenido, {USUARIO_ACTUAL}.")
+            sesion.iniciar(usuario,nivel_de_acceso)
+            print(f"\n✔ Inicio de sesión exitoso. Bienvenido, {sesion.usuario}.")
             return True
 
     print("\n❌ Usuario o contraseña incorrectos.")
     return False
 
 def login_interactivo():
-    """Solicita credenciales al usuario e invoca login()."""
-    usuario = input("👤 Ingresa el nombre de usuario ó (0) para cancelar: ").strip()
+    #Solicita credenciales al usuario e invoca login().
+    usuario = input("👤 Ingresá el nombre de usuario ó (0) para cancelar: ").strip()
     if usuario == "0":
         return False
-    contraseña = getpass("🔑 Ingresa la contraseña: ")
+    contraseña = getpass("🔑 Ingresá la contraseña: ")
     return login(usuario, contraseña)
 
 def logout():
     """Cierra la sesión del usuario actual."""
-    global USUARIO_ACTUAL, NIVEL_ACCESO_ACTUAL, SESION_ACTIVA, ULTIMA_AUTENTICACION
-    USUARIO_ACTUAL = "Observador"
-    NIVEL_ACCESO_ACTUAL = 0
-    SESION_ACTIVA = False
-    ULTIMA_AUTENTICACION = None
-    print("\n👋 Sesión cerrada.")
+    sesion.cerrar()
 
 def requiere_acceso(nivel_requerido):
-    """
-    Decorador que asegura que la función solo se ejecute si hay una sesión válida
-    con el nivel requerido y no expirada.
-    """
+    # Decorador que asegura que la función solo se ejecute si hay una sesión válida
+    # con el nivel requerido y no expirada.
     def decorador(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            ok, motivo = verificar_sesion_activa(nivel_requerido)
+            ok, motivo = sesion.verificar_acceso(nivel_requerido)
             if not ok:
-                if motivo in ("expirada", "inactiva"):
-                    if motivo == "inactiva":
-                        print("\n⚠️  Para esta tarea, tenés que iniciar sesión.")
-                    if motivo == "expirada":
-                        print("\n⚠️  ⏰Tu sesión expiró, volvé a iniciar sesión.")
-
-                    if not login_interactivo():
-                        print("\n❌ No se pudo iniciar sesión.")
-                        return
-                    # volver a verificar después del login
-                    ok, motivo = verificar_sesion_activa(nivel_requerido)
-                    if not ok:
+                # Acá se manejan todos los casos donde el acceso NO es OK
+                # Si el usuario no tiene permisos
+                if motivo == "permiso":
+                    # Si el usuario NO es un observador, se le deniega el acceso sin ofrecer login
+                    if sesion.nivel_acceso > 0:
                         print("\n❌ No tenés permisos suficientes para esta acción.")
                         return
-                elif motivo == "permiso":
-                    print("\n❌ No tenés permisos suficientes para esta acción.")
+                    print("\n⚠️  Esta tarea no puede ejecutarla un observador, tenés que iniciar sesión.")
+                # Si la sesión está inactiva
+                if motivo == "inactiva":
+                    print("\n⚠️  Para esta tarea, tenés que iniciar sesión.")
+                # Si la sesión está expirada
+                if motivo == "expirada":
+                    print("\n⚠️  ⏰Tu sesión expiró, volvé a iniciar sesión.")
+                # Se solicita login
+                if not login_interactivo():
+                    print("\n❌ No se pudo iniciar sesión.")
+                    return
+                # volver a verificar después del login
+                ok, motivo = sesion.verificar_acceso(nivel_requerido)
+                if not ok:
+                    print("\n❌ Este usuario no cuenta con los permisos requeridos para esta acción.")
                     return
             # si pasó todas las verificaciones → ejecutar la función real
+            sesion.refrescar()
             return func(*args, **kwargs)
         return wrapper
     return decorador
-
-def verificar_sesion_activa(nivel_requerido):
-    """ Verifica si el usuario tiene permiso y si la sesión temporal sigue activa.
-    Si la sesión expiró, solicita la contraseña nuevamente.
-    """
-
-    # Verificar sesión activa
-    if NIVEL_ACCESO_ACTUAL == 0 or ULTIMA_AUTENTICACION is None:
-        return False, "inactiva"
-
-    # Verificar nivel de acceso
-    if NIVEL_ACCESO_ACTUAL >= nivel_requerido:
-        # Verificar si la sesión temporal ha expirado
-        duracion = DURACION_SESION.get(NIVEL_ACCESO_ACTUAL, 300)
-        if time.time() - ULTIMA_AUTENTICACION > duracion > 0:
-            # Expirada → limpiar sesión
-            logout()
-            return False, "expirada"
-        return True, None
-
-    return False, "permiso"
-
-def refrescar_sesion():
-    global ULTIMA_AUTENTICACION
-    if SESION_ACTIVA:
-        ULTIMA_AUTENTICACION = time.time()
 
 @requiere_acceso(3)
 def crear_usuario():
@@ -230,5 +246,4 @@ def eliminar_usuario():
                     db.revertir()
                     print(f"\n❌ Error al eliminar el usuario '{usuario}': {e}")
             else:
-
                 print("\n❌ Operación cancelada.")
