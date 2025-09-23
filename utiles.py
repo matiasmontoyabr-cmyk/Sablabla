@@ -277,8 +277,7 @@ def imprimir_productos(productos):
 
     # Imprimir cada producto en una fila
     for producto in productos:
-        # producto = (CODIGO, NOMBRE, PRECIO, STOCK, PINMEDIATO)
-        codigo, nombre_db, precio, stock, _ = producto  # ignoramos pinmediato
+        codigo, nombre, precio, stock, _ = producto  # ignoramos pinmediato
 
         # --- CAPITALIZACIÓN PARA IMPRESIÓN ---
         nombre_display = nombre_db.capitalize()
@@ -290,4 +289,5 @@ def imprimir_productos(productos):
         print(header_format.format(codigo, nombre_display, precio_display, stock_display))
 
     print(line_separator)
+
     input("\nPresioná Enter para continuar...")
