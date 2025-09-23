@@ -91,7 +91,6 @@ def verificar_sesion_activa(nivel_requerido):
     """ Verifica si el usuario tiene permiso y si la sesión temporal sigue activa.
     Si la sesión expiró, solicita la contraseña nuevamente.
     """
-    global NIVEL_ACCESO_ACTUAL, ULTIMA_AUTENTICACION, USUARIO_ACTUAL
 
     # Verificar sesión activa
     if NIVEL_ACCESO_ACTUAL == 0 or ULTIMA_AUTENTICACION is None:
@@ -231,4 +230,5 @@ def eliminar_usuario():
                     db.revertir()
                     print(f"\n❌ Error al eliminar el usuario '{usuario}': {e}")
             else:
+
                 print("\n❌ Operación cancelada.")
