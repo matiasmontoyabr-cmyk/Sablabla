@@ -49,7 +49,7 @@ def imprimir_huesped(huesped):
 def imprimir_huespedes(huespedes):
     print(f"{'NUMERO':<6} {'APELLIDO':<15} {'NOMBRE':<15} {'ESTADO':<10} {'HAB':<4} {'CHECKIN':<12} {'CHECKOUT':<12}")
     print("-" * 80)
-    for i, h in enumerate(huespedes, start=1):
+    for _, h in enumerate(huespedes, start=1):
         numero = h["NUMERO"]
         apellido = h["APELLIDO"]
         nombre = h["NOMBRE"]
@@ -280,7 +280,7 @@ def imprimir_productos(productos):
         codigo, nombre, precio, stock, _ = producto  # ignoramos pinmediato
 
         # --- CAPITALIZACIÓN PARA IMPRESIÓN ---
-        nombre_display = nombre_db.capitalize()
+        nombre_display = nombre.capitalize()
         nombre_display = (nombre_display[:32] + '...') if len(nombre_display) > 35 else nombre_display
 
         precio_display = f"R {precio:.2f}"
@@ -289,5 +289,4 @@ def imprimir_productos(productos):
         print(header_format.format(codigo, nombre_display, precio_display, stock_display))
 
     print(line_separator)
-
     input("\nPresioná Enter para continuar...")

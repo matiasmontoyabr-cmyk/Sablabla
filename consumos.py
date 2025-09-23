@@ -176,7 +176,7 @@ def ver_consumos():
 
             grand_total = 0.0 # Inicializar el total general
 
-            for idx, (consumo_id, fecha, producto_id, producto_nombre, cantidad, precio) in enumerate(consumos, start=1):
+            for idx, (_, fecha, _, producto_nombre, cantidad, precio) in enumerate(consumos, start=1):
                 fecha_display = formatear_fecha(fecha)
                 item_total = cantidad * precio # Calcular el total por item
                 grand_total += item_total # Acumular al total general

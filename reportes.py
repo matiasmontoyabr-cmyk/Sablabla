@@ -147,7 +147,11 @@ def reporte_ocupacion():
     # Inicializar mapa de ocupación (habitaciones 1..7)
     ocupacion = {hab: ["." for _ in range(dias)] for hab in range(1, 8)}
 
-    for num, nombre, apellido, hab, checkin, checkout, estado in huespedes:
+    for h in huespedes:
+        hab = h["HABITACION"]
+        checkin = h["CHECKIN"]
+        checkout = h["CHECKOUT"]
+        estado = h["ESTADO"]
         if not hab or hab == 0:
             continue
         f_in = date.fromisoformat(checkin)

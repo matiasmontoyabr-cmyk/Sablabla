@@ -230,5 +230,4 @@ def eliminar_usuario():
                     db.revertir()
                     print(f"\n❌ Error al eliminar el usuario '{usuario}': {e}")
             else:
-
                 print("\n❌ Operación cancelada.")

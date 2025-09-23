@@ -637,5 +637,4 @@ def ver_registro():
             for i, linea in enumerate(entradas, start=1):
                 print(f"{i}. {linea.strip()}\n")
 
-
         return
