@@ -522,7 +522,7 @@ def editar_huesped():
         if opcion in campos:
             campo_sql, funcion_valor = campos[opcion]
             valor_ingresado = funcion_valor()
-            if opcion == "1" or opcion == "2":
+            if opcion in ("1", "2"):
                 # Primero unidecode para manejar acentos, luego re.sub para limpiar caracteres
                 valor_unidecode = unidecode(valor_ingresado)
                 valor_limpio = valor_unidecode.replace('-', ' ').replace('_', ' ')
@@ -636,5 +636,6 @@ def ver_registro():
             entradas = registro.split("\n---\n")
             for i, linea in enumerate(entradas, start=1):
                 print(f"{i}. {linea.strip()}\n")
+
 
         return
