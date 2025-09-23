@@ -220,7 +220,7 @@ def eliminar_usuario():
         else:
             confirmacion = pedir_confirmacion(f"\n⚠️¿Estás seguro de que quieres eliminar a '{usuario}'? (si/no): ")
             if confirmacion == "si":
-                """Elimina un usuario de la base de datos."""
+                # Elimina un usuario de la base de datos.
                 try:
                     db.iniciar()
                     db.ejecutar("DELETE FROM USUARIOS WHERE USUARIO=?", (usuario,))
@@ -230,4 +230,5 @@ def eliminar_usuario():
                     db.revertir()
                     print(f"\n❌ Error al eliminar el usuario '{usuario}': {e}")
             else:
+
                 print("\n❌ Operación cancelada.")
