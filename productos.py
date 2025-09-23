@@ -108,7 +108,7 @@ def buscar_producto():
             return
         elif criterio.isdigit():
             codigo = int(criterio)
-            query = "SELECT SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?"
+            query = "SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?"
             producto = db.obtener_uno(query, (codigo,))
             if not producto:
                 print("\n⚠️  No se encontró un producto con ese código.")
@@ -164,6 +164,9 @@ def editar_producto():
 
         codigo_original = int(codigo)
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo_original,))
+        if not producto:
+            print("\n⚠️  Producto no encontrado.")
+            continue
         estado_anterior = {
             "CODIGO": producto["CODIGO"],
             "NOMBRE": producto["NOMBRE"],
@@ -171,9 +174,6 @@ def editar_producto():
             "STOCK": producto["STOCK"],
             "ALERTA": producto["ALERTA"]
         }
-        if not producto:
-            print("\n⚠️  Producto no encontrado.")
-            continue
 
         imprimir_producto(producto)
         break
@@ -365,7 +365,7 @@ def eliminar_producto():
                     db.ejecutar("DELETE FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
                     marca_tiempo = marca_de_tiempo()
                     log = (
-                        f"[{marca_tiempo}] PRODUCTO ELIMINADO por {usuarios.USUARIO_ACTUAL}:\n"
+                        f"[{marca_tiempo}] PRODUCTO ELIMINADO por {usuarios.sesion.usuario}:\n"
                         f"Código: {producto['CODIGO']} | "
                         f"Nombre: {producto['NOMBRE']} | "
                         f"Precio: {producto['PRECIO']} | "

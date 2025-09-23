@@ -1,4 +1,5 @@
 import re
+import sqlite3
 import usuarios
 from datetime import datetime, date
 from db import db
@@ -146,7 +147,7 @@ def cerrar_habitacion():
         numero = huesped["NUMERO"]
         hoy = date.today().isoformat()
         separador = "\n---\n"
-        registro_anterior = huesped["REGISTRO"] if huesped["REGISTRO"] else ""
+        registro_anterior = str(huesped["REGISTRO"] or "")
 
         # Verificar consumos impagos
         query = """
@@ -184,11 +185,14 @@ def cerrar_habitacion():
 
         # Releer el registro actualizado de la base antes de cerrar
         row = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-        registro_anterior = row["REGISTRO"] if row and "REGISTRO" in row else ""
+        registro_anterior = str(huesped["REGISTRO"] or "")
         separador = "\n---\n"
 
         registro_nuevo = f"Estado modificado a CERRADO - {marca_de_tiempo()}"
-        registro = registro_anterior + separador + registro_nuevo
+        if registro_anterior.strip():
+            registro = registro_anterior + separador + registro_nuevo
+        else:
+            registro = registro_nuevo
 
         updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro}
 
@@ -215,7 +219,7 @@ def cerrar_habitacion():
                 f"Nombre: {nombre} {apellido} | Habitación: {habitacion} | Estado anterior: {estado_anterior}\n"
                 f"Total de consumos no pagados al momento del cierre: R {total_pendiente:.2f}\n"
                 f"Registro previo:\n{registro_anterior.strip()}"
-                f"Acción realizada por: {usuarios.USUARIO_ACTUAL}"
+                f"Acción realizada por: {usuarios.sesion.usuario}"
             )
             registrar_log("huespedes_cerrados.log", log)
             print(f"\n✔ Habitación {habitacion} cerrada correctamente.")
@@ -227,7 +231,7 @@ def cerrar_habitacion():
 @usuarios.requiere_acceso(0)
 def buscar_huesped():
     opciones = {
-        "1": ("APELLIDO", lambda: f"%{input("Ingrese el apellido: ").strip()}%"),
+        "1": ("APELLIDO", lambda: input("Ingrese el apellido: ").strip()),
         "2": ("NUMERO", lambda: input("Ingrese el número de huesped: ").strip()),
         "3": ("HABITACION", lambda: input("Ingrese el número de habitación: ").strip()),
         "4": ("DOCUMENTO", lambda: input("Ingrese el número de documento: ").strip()),
@@ -253,13 +257,17 @@ def buscar_huesped():
                     print("\n⚠️  El valor de búsqueda no puede estar vacío.")
                     continue
                 if campo == "APELLIDO":
-                    # Aplicamos la estandarización para el apellido
-                    valor = unidecode(valor_raw).lower()
-                    # La consulta también debe usar LOWER y unidecode en la columna para que la búsqueda sea efectiva
-                    query = f"SELECT * FROM HUESPEDES WHERE LOWER({campo}) LIKE ?"
-                    # Ya  el comodín % para búsqueda parcial
-                    valor = f"%{valor}%"
-                    huespedes = db.obtener_todos(query, (valor,))
+                    # La consulta a la DB se hace amplia, sin normalizar acentos
+                    query = f"SELECT * FROM HUESPEDES WHERE APELLIDO LIKE ?"
+                    params = (f"%{valor_raw}%",)
+                    huespedes_iniciales = db.obtener_todos(query, params)
+                    # Ahora, filtramos en Python usando unidecode
+                    valor_normalizado = unidecode(valor_raw).lower()
+                    huespedes_final = [
+                        h for h in huespedes_iniciales
+                        if valor_normalizado in unidecode(h["APELLIDO"]).lower()
+                    ]
+                    huespedes = huespedes_final # Asigna el resultado filtrado a la variable final
                 else:
                     query = f"SELECT * FROM HUESPEDES WHERE {campo} = ?"
                     huesped = db.obtener_uno(query, (valor_raw,))
@@ -273,7 +281,6 @@ def buscar_huesped():
             break
         else:
             print("\n⚠️  Opción inválida. Intente nuevamente.")
-    
     return
 
 @usuarios.requiere_acceso(1)
@@ -314,7 +321,7 @@ def cambiar_estado():
         nuevo_estado = opciones[seleccion]
         hoy = date.today().isoformat()
         registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-        registro_anterior = registro_anterior_data["REGISTRO"] if registro_anterior_data and "REGISTRO" in registro_anterior_data else ""
+        registro_anterior = str(registro_anterior_data["REGISTRO"] or "") if registro_anterior_data else ""
         separador = "\n---\n"
 
         if nuevo_estado == "PROGRAMADO":
@@ -328,7 +335,10 @@ def cambiar_estado():
             if nacimiento < 1900:
                 nacimiento = pedir_entero("Ingrese el año de nacimiento: ", minimo=1900)
             registro_nuevo = f"Estado modificado a {nuevo_estado} - {datetime.now().isoformat(sep=" ", timespec='seconds')}"
-            registro = registro_anterior + separador + registro_nuevo
+            if registro_anterior.strip():
+                registro = registro_anterior + separador + registro_nuevo
+            else:
+                registro = registro_nuevo
             updates = {"ESTADO": nuevo_estado, "CHECKIN": checkin, "CHECKOUT": checkout, "HABITACION": 0, "NACIMIENTO": nacimiento, "REGISTRO": registro}
             try:
                 db.iniciar()
@@ -441,7 +451,7 @@ def cambiar_estado():
                     f"Nombre: {nombre} {apellido} | Habitación: {habitacion} | Estado anterior: {estado_anterior}\n"
                     f"Total de consumos no pagados al momento del cierre: R {total_pendiente:.2f}\n"
                     f"Registro previo:\n{registro_anterior.strip()}"
-                    f"Acción realizada por: {usuarios.USUARIO_ACTUAL}"
+                    f"Acción realizada por: {usuarios.sesion.usuario}"
                 )
                 registrar_log("huespedes_cerrados.log", log)
             except Exception as e:
@@ -593,11 +603,11 @@ def eliminar_huesped():
                     f"Documento: {huesped['DOCUMENTO']} | Nacimiento: {huesped['NACIMIENTO']} | "
                     f"Habitación: {huesped['HABITACION']} | Contingente: {huesped['CONTINGENTE']} | "
                     f"Registro: {huesped['REGISTRO']}\n"
-                    f"Acción realizada por: {usuarios.USUARIO_ACTUAL}"
+                    f"Acción realizada por: {usuarios.sesion.usuario}"
                 )
                 registrar_log("huespedes_eliminados.log", log)
                 print("\n✔ Huésped eliminado.")
-            except db.IntegrityError:
+            except sqlite3.IntegrityError:
                 db.revertir()
                 print("\n❌ No se puede eliminar el huésped porque tiene consumos pendientes.")
             except Exception as e:

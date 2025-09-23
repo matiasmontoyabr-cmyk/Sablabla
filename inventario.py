@@ -50,7 +50,7 @@ def ingresar_compra():
             db.confirmar()
             marca_tiempo = marca_de_tiempo()
             log = (
-                f"[{marca_tiempo}] COMPRA INGRESADA por {usuarios.USUARIO_ACTUAL}:\n"
+                f"[{marca_tiempo}] COMPRA INGRESADA por {usuarios.sesion.usuario}:\n"
                 f"Producto: {nombre} (ID: {codigo}) | "
                 f"Stock anterior: {stock} | Agregado: {cantidad} | Nuevo stock: {nuevo_stock}"
             )
@@ -96,7 +96,7 @@ def editar_inventario():
             db.confirmar()
             marca_tiempo = marca_de_tiempo()
             log = (
-                f"[{marca_tiempo}] INVENTARIO EDITADO por {usuarios.USUARIO_ACTUAL}:\n"
+                f"[{marca_tiempo}] INVENTARIO EDITADO por {usuarios.sesion.usuario}:\n"
                 f"Producto: {nombre} (ID: {codigo}) | "
                 f"Stock anterior: {producto['STOCK']} | Nuevo stock: {nuevo_stock}"
             )

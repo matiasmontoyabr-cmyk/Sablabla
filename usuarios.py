@@ -140,7 +140,7 @@ def crear_usuario():
             break
     contraseña = getpass("🔑 Ingresa la contraseña: ")
     while True:
-        nivel_de_acceso = int(input("Nivel de acceso (0, 1, 2): "))
+        nivel_de_acceso = int(pedir_entero("Nivel de acceso (0, 1, 2): ", minimo=0, maximo=2))
         if nivel_de_acceso in [0, 1, 2]:
             # Encriptar la contraseña
             contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')

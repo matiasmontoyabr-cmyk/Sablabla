@@ -29,7 +29,8 @@ def imprimir_huesped(huesped):
     columnas = [
         "NUMERO", "APELLIDO", "NOMBRE", "TELEFONO", "EMAIL", "BOOKING", "ESTADO", "CHECKIN", "CHECKOUT",
         "DOCUMENTO", "NACIMIENTO", "HABITACION", "CONTINGENTE", "REGISTRO"]
-    for col, val in zip(columnas, huesped):
+    for col in columnas:
+        val = huesped[col] # Accede al valor por el nombre de la columna
         display_val = val # Por defecto, el valor es el mismo
         if col in ("APELLIDO", "NOMBRE"):
             if isinstance(val, str): # Asegurarse de que es una cadena antes de split/capitalize
@@ -37,8 +38,9 @@ def imprimir_huesped(huesped):
         elif col in ("CHECKIN", "CHECKOUT"):
             display_val = formatear_fecha(val)
         elif col == "REGISTRO":
-            if val:
-                display_val = val.strip().split("\n---\n")[-1]
+            val_str = str(val or "")
+            if val_str.strip():
+                display_val = val_str.strip().split("\n---\n")[-1]
             else:
                 display_val = "(Sin registro)"
         if display_val is None or (isinstance(display_val, str) and not display_val.strip()):
@@ -138,7 +140,7 @@ def marca_de_tiempo():
 def pedir_entero(mensaje, minimo=None, maximo=None, defecto=None):
     while True:
         respuesta_entero = input(mensaje).strip()
-        solo_digitos = re.sub(r"\D", "", respuesta_entero)  # Quita todo excepto dígitos
+        solo_digitos = re.sub(r"[^0-9-]", "", respuesta_entero)  # Quita todo excepto dígitos y "-""
         if not solo_digitos:
             if defecto is not None:
                 return defecto

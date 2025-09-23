@@ -127,12 +127,15 @@ def agregar_consumo():
                     db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, consumo['codigo']))
                     
                 registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero_huesped,))
-                registro_anterior = registro_anterior_data["REGISTRO"] if registro_anterior_data and "REGISTRO" in registro_anterior_data else ""
+                registro_anterior = str(registro_anterior_data["REGISTRO"] or "") if registro_anterior_data else ""
                 separador = "\n---\n"
                 registro_consumo = f"Consumo agregado: {consumo['nombre']} (x{consumo['cantidad']}) - {fecha}"
                 if consumo['pagado'] == 1:
                     registro_consumo += " (PAGADO)"
-                nuevo_registro = registro_anterior + separador + registro_consumo if registro_anterior else registro_consumo
+                if registro_anterior.strip():
+                    nuevo_registro = registro_anterior + separador + registro_consumo
+                else:
+                    nuevo_registro = registro_consumo
                 editar_huesped_db(db, numero_huesped, {"REGISTRO": nuevo_registro})
             db.confirmar()
             print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {habitacion}:")
@@ -171,8 +174,8 @@ def ver_consumos():
         if consumos:
             print(f"\nHistorial de consumos de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
             # Modificación: Agregar "PRECIO TOTAL" al encabezado
-            print(f"{'#':<3} {'FECHA Y HORA':<20} {'PRODUCTO':<30} {'CANTIDAD':<6} {'PRECIO_TOTAL':>16}")
-            print("-" * 83) # Ajustar la longitud de la línea separadora
+            print(f"{'#':<3} {'FECHA Y HORA':<20} {'PRODUCTO':<30} {'CANTIDAD':<6} {'P. UNIT':>10} {'PRECIO_TOTAL':>12}")
+            print("-" * 90) # Ajustar la longitud de la línea separadora
 
             grand_total = 0.0 # Inicializar el total general
 
@@ -181,9 +184,9 @@ def ver_consumos():
                 item_total = cantidad * precio # Calcular el total por item
                 grand_total += item_total # Acumular al total general
                 # Modificación: Imprimir el precio total por item
-                print(f"{idx:<3} {fecha_display:<20} {producto_nombre:<30} {cantidad:<8} {item_total:>12.2f}")
-            print("-" * 83) # Línea separadora antes del total
-            print(f"{'TOTAL:':<61} {grand_total:>15.2f}") # Imprimir el total general
+                print(f"{idx:<3} {fecha_display:<20} {producto_nombre:<30} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f}")
+            print("-" * 90) # Línea separadora antes del total
+            print(f"{'TOTAL:':<70} {grand_total:>15.2f}") # Imprimir el total general
         else:
             print("\nEsta habitación no tiene consumos registrados.")
         return
@@ -260,7 +263,7 @@ def eliminar_consumos():
                     f"[{marca_tiempo}] CONSUMO ELIMINADO:\n"
                     f"Huésped: {huesped['NOMBRE']} {huesped['APELLIDO']} | Habitación: {huesped['HABITACION']} | Huesped_ID: {huesped['NUMERO']}\n"
                     f"Producto: {producto_nombre} (ID: {producto_id}) | Cantidad: {cantidad} | Consumo_ID: {consumo_id}"
-                    f"Acción realizada por: {usuarios.USUARIO_ACTUAL}"
+                    f"Acción realizada por: {usuarios.sesion.usuario}"
                 )
                 registrar_log("consumos_eliminados.log", log)
                 
@@ -448,16 +451,16 @@ def consumo_cortesia():
                 if cortesia['stock_anterior'] != -1:
                     nuevo_stock = cortesia['stock_anterior'] - cortesia['cantidad']
                     db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, cortesia['codigo']))
+                marca_tiempo = marca_de_tiempo()
+                log = (
+                    f"[{marca_tiempo}] CONSUMO DE CORTESÍA:\n"
+                    f"Producto: {producto['NOMBRE']} (ID: {producto['CODIGO']}) | "
+                    f"Cantidad: {cantidad} | "
+                    f"Autorizado por: {autoriza.title()} | "
+                    f"Registrado por: {usuarios.sesion.usuario}"
+                )
+                registrar_log("consumos_cortesia.log", log)
             db.confirmar()
-            marca_tiempo = marca_de_tiempo()
-            log = (
-                f"[{marca_tiempo}] CONSUMO DE CORTESÍA:\n"
-                f"Producto: {producto['NOMBRE']} (ID: {producto['CODIGO']}) | "
-                f"Cantidad: {cantidad} | "
-                f"Autorizado por: {autoriza.title()} | "
-                f"Registrado por: {usuarios.USUARIO_ACTUAL}"
-            )
-            registrar_log("consumos_cortesia.log", log)
             print(f"\n✔ Cortesía autorizada por {autoriza.capitalize()} registrada correctamente.")
             for i, cortesia in enumerate(cortesias_agregadas):
                 print(f"  {i + 1}. {cortesia['nombre'].capitalize()}, (x{cortesia['cantidad']})")

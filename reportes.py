@@ -149,27 +149,32 @@ def reporte_ocupacion():
 
     for h in huespedes:
         hab = h["HABITACION"]
-        checkin = h["CHECKIN"]
-        checkout = h["CHECKOUT"]
-        estado = h["ESTADO"]
         if not hab or hab == 0:
             continue
-        f_in = date.fromisoformat(checkin)
-        f_out = date.fromisoformat(checkout)
-
+        f_in = date.fromisoformat(h["CHECKIN"])
+        f_out = date.fromisoformat(h["CHECKOUT"])
+        estado = h["ESTADO"]
+        
         for i in range(dias):
             d = hoy + timedelta(days=i)
-            if f_in <= d <= f_out:
-                if d == f_in:
-                    ocupacion[hab][i] = "CI"
-                elif d == f_out:
-                    ocupacion[hab][i] = "CO"
-                else:
-                    if estado == "ABIERTO":
-                        ocupacion[hab][i] = "X"
-                    else:  # PROGRAMADO
-                        if ocupacion[hab][i] == ".":
-                            ocupacion[hab][i] = "P"
+
+            if f_in <= d < f_out:
+                if estado == "ABIERTO":
+                    ocupacion[hab][i] = "X"
+                elif ocupacion[hab][i] == ".": # Solo si está libre, para no sobreescribir otro estado
+                    ocupacion[hab][i] = "P"
+
+        if 0 <= (f_in - hoy).days < dias:
+            idx = (f_in - hoy).days
+            ocupacion[hab][idx] = "CI"
+
+        if 0 <= (f_out - hoy).days < dias:
+            idx = (f_out - hoy).days
+            # Si el check-in y check-out son el mismo día
+            if ocupacion[hab][idx] == "CI":
+                ocupacion[hab][idx] = "CI/CO"
+            else:
+                ocupacion[hab][idx] = "CO"
 
     # Encabezado (2 caracteres por día)
     header_days = "".join(f"{(hoy + timedelta(days=i)).day:02}".ljust(col_w) for i in range(dias))

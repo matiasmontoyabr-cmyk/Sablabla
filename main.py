@@ -243,7 +243,7 @@ def gestionar_reportes():
 def gestionar_usuarios():
     while True:
         print("\n--- 👤Menú de Gestión de Usuarios ---")
-        opcion = input("1. ➕ Crear nuevo usuario\n2. ✏️ Editar usuario\n3. 🗑️ Eliminar usuario\n4. ␎ Cerrar sesión\n0. ⮐ Volver al menú principal\n").strip()
+        opcion = input("1. ➕ Crear nuevo usuario\n2. ✏️ Editar usuario\n3. 🗑️ Eliminar usuario\n4. 👥 Mostrar usuarios\n5. ␎ Cerrar sesión\n0. ⮐ Volver al menú principal\n").strip()
         if opcion == "1":
             crear_usuario()
         elif opcion == "2":
@@ -254,7 +254,6 @@ def gestionar_usuarios():
             mostrar_usuarios()
         elif opcion == "5":
             logout()
-            return
         elif opcion == "0":
             return
         else:
