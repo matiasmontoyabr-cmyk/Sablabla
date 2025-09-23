@@ -450,7 +450,7 @@ def cambiar_estado():
 
     return
 
-def editar_huesped_db(db, numero, updates_dict):
+def editar_huesped_db(database, numero, updates_dict):
     """
     Actualiza uno o varios campos del huésped dado su número de registro.
     updates_dict es un diccionario con {campo: valor}.
@@ -469,7 +469,7 @@ def editar_huesped_db(db, numero, updates_dict):
     valores.append(numero)
 
     sql = f"UPDATE HUESPEDES SET {', '.join(set_clauses)} WHERE NUMERO = ?"
-    db.ejecutar(sql, tuple(valores))
+    database.ejecutar(sql, tuple(valores))
 
 @usuarios.requiere_acceso(1)
 def editar_huesped():

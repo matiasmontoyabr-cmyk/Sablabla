@@ -136,8 +136,8 @@ def buscar_producto():
                     print("\n❌ No se encontraron productos que coincidan con la búsqueda.")
                     return
 
-def actualizar_producto_db(db, codigo, campo, valor):
-    db.ejecutar(f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?", (valor, codigo))
+def actualizar_producto_db(database, codigo, campo, valor):
+    database.ejecutar(f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?", (valor, codigo))
 
 @usuarios.requiere_acceso(2)
 def editar_producto():
@@ -342,7 +342,7 @@ def eliminar_producto():
             print("\n⚠️  Producto no encontrado.")
             continue
 
-        print(f"Producto seleccionado: ")
+        print("Producto seleccionado: ")
         imprimir_producto(producto)
 
         confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que desea eliminar este producto? (si/no): ")

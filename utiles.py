@@ -25,7 +25,7 @@ def registrar_log(nombre_archivo, contenido):
         print(f"⚠️  No se pudo escribir el log '{nombre_archivo}': {e}")
 
 def imprimir_huesped(huesped):
-    print(f"\nHuésped seleccionado:")
+    print("\nHuésped seleccionado:")
     columnas = [
         "NUMERO", "APELLIDO", "NOMBRE", "TELEFONO", "EMAIL", "BOOKING", "ESTADO", "CHECKIN", "CHECKOUT",
         "DOCUMENTO", "NACIMIENTO", "HABITACION", "CONTINGENTE", "REGISTRO"]

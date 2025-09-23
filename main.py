@@ -1,11 +1,20 @@
-#TODO:
+#TODO: Análisis de archivos y errores .br@gmail
+
+#Probar editar_huesped_db desde editar_huesped
+#Probar actualizar_producto_db desde editar_producto
 
 
-#Agregar íconos
+#El sistema de consumos ya descuenta stock y marca pagos. Podría ser útil agregar un trigger o constraint en la DB para que nunca quede stock negativo
 
-#Verificar el muestreo de registros
+#Crear en utiles.py una función que pida una opción numérica, y como parámetros tome un mensaje, permitir_cero defuault True, permitir_vacio default False, Mínimo default None, máximo default None).
 
+#Estructurar Logs en JSON para facilitar su lectura y análisis
+#Verificar el muestreo de registros para que no se muestren todos los registros de una vez
 #Verificar el muestreo de Logs (principalmente aquel de consumos eliminados, ya que no tiene sentido que muestre todo)
+
+#Usar with en db.py
+
+#Normalización de nombres y apellidos guardando en DB en formato Title Case.
 
 import bcrypt
 import sqlite3
@@ -50,7 +59,7 @@ def usuarios_existe():
             db.confirmar()
         except sqlite3.IntegrityError:
             db.revertir()
-            print(f"\n❌ Error: No se pudo crear un Superusuario.")
+            print("\n❌ Error: No se pudo crear un Superusuario.")
 
 def productos_existe():
     try:

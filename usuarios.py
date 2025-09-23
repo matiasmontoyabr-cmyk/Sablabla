@@ -100,7 +100,7 @@ def verificar_sesion_activa(nivel_requerido):
     if NIVEL_ACCESO_ACTUAL >= nivel_requerido:
         # Verificar si la sesión temporal ha expirado
         duracion = DURACION_SESION.get(NIVEL_ACCESO_ACTUAL, 300)
-        if duracion > 0 and time.time() - ULTIMA_AUTENTICACION > duracion:
+        if time.time() - ULTIMA_AUTENTICACION > duracion > 0:
             # Expirada → limpiar sesión
             logout()
             return False, "expirada"

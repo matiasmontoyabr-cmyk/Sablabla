@@ -46,7 +46,7 @@ def reporte_abiertos():
     query = "SELECT * FROM HUESPEDES WHERE ESTADO = ? ORDER BY CAST(HABITACION AS INTEGER)"
     huespedes = db.obtener_todos(query, ("ABIERTO",))
     if huespedes:
-        print(f"\nHuéspedes abiertos:\n")
+        print("\nHuéspedes abiertos:\n")
         imprimir_huespedes(huespedes)
         input("\nPresione Enter para continuar...")
         return
@@ -102,12 +102,12 @@ def reporte_pronto_checkin():
     huespedes = db.obtener_todos(query, (hoy_iso, manana_iso))
 
     if huespedes:
-        print(f"\nHuéspedes con check-in programado proximamente:")
+        print("\nHuéspedes con check-in programado proximamente:")
         imprimir_huespedes(huespedes)
         input("\nPresione Enter para continuar...")
         return
     else:
-        print(f"\n❌ No hay huéspedes con check-in programado para hoy ni para mañana.")
+        print("\n❌ No hay huéspedes con check-in programado para hoy ni para mañana.")
         return
 
 @usuarios.requiere_acceso(1)
