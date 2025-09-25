@@ -1,11 +1,5 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
-#Aplicar pedir_habitación a _actualizar_a_programdo() en huespedes.py
-#Aplicar pedir_habitación a _actualizar_a_abierto() en huespedes.py
-
-#Inventario para consumibles/vajilla/mayoristas. Ver si se puede relacionar con productos o crear tabla nueva.
-
-#El sistema de consumos ya descuenta stock y marca pagos. Podría ser útil agregar un trigger o constraint en la DB para que nunca quede stock negativo
 
 #Muestreo de coretsías en generar_reportes, con opción diario, semanal, mensual, histórico. Requiere mínimo lvl 2.
 
@@ -29,7 +23,7 @@ from inventario import abrir_inventario, ingresar_compra, editar_inventario
 from productos import nuevo_producto, buscar_producto, listado_productos, editar_producto, eliminar_producto
 from reportes import reporte_diario, reporte_abiertos, reporte_cerrados, reporte_pronto_checkin, reporte_inventario, reporte_ocupacion, ver_logs
 from usuarios import crear_usuario, mostrar_usuarios, editar_usuario, eliminar_usuario, logout
-from utiles import pedir_confirmacion
+from utiles import pedir_confirmacion, opcion_menu
 
 ### FUNCIONES ###
 
@@ -105,142 +99,135 @@ def cortesias_existe():
         print(f"❌ Error al crear la tabla CORTESIAS: {e}")
 
 def inicio():
+    mensaje = "\n¿Qué desea hacer?:\n1. 🧘 Gestion de huéspedes\n2. 📋 Gestion de consumos\n3. 🛍️ Gestion de productos\n4. 📦 Gestion de inventario\n5. 📈 Gestion de reportes\n6. 👤 Gestion de usuarios\n0. ❌ Cerrar\n"
     while True:
-        respuesta_home = input("\n¿Qué desea hacer?:\n1. 🧘 Gestion de huéspedes\n2. 📋 Gestion de consumos\n3. 🛍️ Gestion de productos\n4. 📦 Gestion de inventario\n5. 📈 Gestion de reportes\n6. 👤 Gestion de usuarios\n0. ❌ Cerrar\n").strip()
-        if respuesta_home == "0":
+        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=6)
+        if respuesta == 0:
             respuesta_cierre = pedir_confirmacion("¿Está seguro de que desea cerrar el programa? (si/no): ")
             if respuesta_cierre != "si":
                 print("\n⮐ Volviendo al menú principal...")
                 continue
             else:
                 break
-        if respuesta_home == "1":
+        if respuesta == 1:
             gestionar_huespedes()
-        elif respuesta_home == "2":
+        elif respuesta == 2:
             gestionar_consumos()
-        elif respuesta_home == "3":
+        elif respuesta == 3:
             gestionar_productos()
-        elif respuesta_home == "4":
+        elif respuesta == 4:
             gestionar_inventario()
-        elif respuesta_home == "5":
+        elif respuesta == 5:
             gestionar_reportes()
-        elif respuesta_home == "6":
+        elif respuesta == 6:
             gestionar_usuarios()
-        else:
-            print("\n⚠️  Opción inválida. Intente nuevamente: ")
 
 def gestionar_huespedes():
+    mensaje = "\n1. ➕ Registrar nuevo huesped\n2. ⁐ Cerrar habitación\n3. 🔍 Buscar un huesped\n4. ⭾ Cambiar el estado de un huesped\n5. ✏️ Editar huesped\n6. ️️🗑️ Eliminar un huesped\n7. ㏒ Ver registro\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta_huespedes = input("\n1. ➕ Registrar nuevo huesped\n2. ⁐ Cerrar habitación\n3. 🔍 Buscar un huesped\n4. ⭾ Cambiar el estado de un huesped\n5. ✏️ Editar huesped\n6. ️️🗑️ Eliminar un huesped\n7. ㏒ Ver registro\n0. ⮐ Volver al inicio\n").strip()
-        if respuesta_huespedes == "1":
+        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=7)
+        if respuesta == 1:
             nuevo_huesped()
-        elif respuesta_huespedes == "2":
+        elif respuesta == 2:
             cerrar_habitacion()
-        elif respuesta_huespedes == "3":
+        elif respuesta == 3:
             buscar_huesped()
-        elif respuesta_huespedes == "4":
+        elif respuesta == 4:
             cambiar_estado()
-        elif respuesta_huespedes == "5":
+        elif respuesta == 5:
             editar_huesped()
-        elif respuesta_huespedes == "6":
+        elif respuesta == 6:
             eliminar_huesped()
-        elif respuesta_huespedes == "7":
+        elif respuesta == 7:
             ver_registro()
-        elif respuesta_huespedes == "0":
+        elif respuesta == 0:
             return
-        else:
-            print("\n⚠️  Opción inválida. Intente nuevamente: ")
 
 def gestionar_consumos():
+    mensaje = "\n1. ➕ Agregar consumo\n2. 🔍 Ver consumos\n3. ️️🗑️ Eliminar consumos\n4. 💸 Registrar pago\n5. 🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta_consumos = input("\n1. ➕ Agregar consumo\n2. 🔍 Ver consumos\n3. ️️🗑️ Eliminar consumos\n4. 💸 Registrar pago\n5. 🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n").strip()
-        if respuesta_consumos == "1":
+        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=5)
+        if respuesta == 1:
             agregar_consumo()
-        elif respuesta_consumos == "2":
+        elif respuesta == 2:
             ver_consumos()
-        elif respuesta_consumos == "3":
+        elif respuesta == 3:
             eliminar_consumos()
-        elif respuesta_consumos == "4":
+        elif respuesta == 4:
             registrar_pago()
-        elif respuesta_consumos == "5":
+        elif respuesta == 5:
             consumo_cortesia()
-        elif respuesta_consumos == "0":
+        elif respuesta == 0:
             return
-        else: 
-            print("\n⚠️  Opción inválida. Intente nuevamente: ")
 
 def gestionar_productos():
+    mensaje = "\n1. ➕ Agregar producto\n2. 🔍 Buscar productos\n3. 📋 Listado de productos\n4. ✏️  Editar producto\n5. ️️🗑️  Eliminar producto\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta_productos = input("\n1. ➕ Agregar producto\n2. 🔍 Buscar productos\n3. 📋 Listado de productos\n4. ✏️  Editar producto\n5. ️️🗑️  Eliminar producto\n0. ⮐ Volver al inicio\n").strip()
-        if respuesta_productos == "1":
+        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=5)
+        if respuesta == 1:
             nuevo_producto()
-        elif respuesta_productos == "2":
+        elif respuesta == 2:
             buscar_producto()
-        elif respuesta_productos == "3":
+        elif respuesta == 3:
             listado_productos()
-        elif respuesta_productos == "4":
+        elif respuesta == 4:
             editar_producto()
-        elif respuesta_productos == "5":
+        elif respuesta == 5:
             eliminar_producto()
-        elif respuesta_productos == "0":
+        elif respuesta == 0:
             return
-        else: 
-            print("\n⚠️  Opción inválida. Intente nuevamente: ")
 
 def gestionar_inventario():
+    mensaje = "\n1. 📦 Abrir inventario\n2. ➕ Ingresar compra\n3. ✏️ Editar inventario\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta_inventario = input("\n1. 📦 Abrir inventario\n2. ➕ Ingresar compra\n3. ✏️ Editar inventario\n0. ⮐ Volver al inicio\n").strip()
-        if respuesta_inventario == "1":
+        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=3)
+        if respuesta == 1:
             abrir_inventario()
-        elif respuesta_inventario == "2":
+        elif respuesta == 2:
             ingresar_compra()
-        elif respuesta_inventario == "3":
+        elif respuesta == 3:
             editar_inventario()
-        elif respuesta_inventario == "0":
+        elif respuesta == 0:
             return
-        else:
-             print("\n⚠️  Opción inválida. Intente nuevamente: ")
 
 def gestionar_reportes():
+    mensaje = "\n1. 📋 Generar reporte de consumos diarios\n2. 🧘 Generar reporte de pasajeros abiertos\n3. ⁐ Generar reporte de pasajeros cerrados\n4. 📆 Generar reporte de pronto checkin\n5. 📦 Generar reporte de inventario\n6. 📅 Generar reporte de ocupación\n7. ㏒ Ver logs\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta_reportes = input("\n1. 📋 Generar reporte de consumos diarios\n2. 🧘 Generar reporte de pasajeros abiertos\n3. ⁐ Generar reporte de pasajeros cerrados\n4. 📆 Generar reporte de pronto checkin\n5. 📦 Generar reporte de inventario\n6. 📅 Generar reporte de ocupación\n7. ㏒ Ver logs\n0. ⮐ Volver al inicio\n").strip()
-        if respuesta_reportes == "1":
+        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=7)
+        if respuesta == 1:
             reporte_diario()
-        elif respuesta_reportes == "2":
+        elif respuesta == 2:
             reporte_abiertos()
-        elif respuesta_reportes == "3":
+        elif respuesta == 3:
             reporte_cerrados()
-        elif respuesta_reportes == "4":
+        elif respuesta == 4:
             reporte_pronto_checkin()
-        elif respuesta_reportes == "5":
+        elif respuesta == 5:
             reporte_inventario()
-        elif respuesta_reportes == "6":
+        elif respuesta == 6:
             reporte_ocupacion()
-        elif respuesta_reportes == "7":
+        elif respuesta == 7:
             ver_logs()
-        elif respuesta_reportes == "0":
+        elif respuesta == 0:
             return
-        else:
-            print("\n⚠️  Opción inválida. Intente nuevamente: ")
 
 def gestionar_usuarios():
+    print("\n--- 👤Menú de Gestión de Usuarios ---")
+    mensaje = "1. ➕ Crear nuevo usuario\n2. ✏️ Editar usuario\n3. 🗑️ Eliminar usuario\n4. 👥 Mostrar usuarios\n5. ␎ Cerrar sesión\n0. ⮐ Volver al menú principal\n"
     while True:
-        print("\n--- 👤Menú de Gestión de Usuarios ---")
-        opcion = input("1. ➕ Crear nuevo usuario\n2. ✏️ Editar usuario\n3. 🗑️ Eliminar usuario\n4. 👥 Mostrar usuarios\n5. ␎ Cerrar sesión\n0. ⮐ Volver al menú principal\n").strip()
-        if opcion == "1":
+        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=5)
+        if respuesta == 1:
             crear_usuario()
-        elif opcion == "2":
+        elif respuesta == 2:
             editar_usuario()
-        elif opcion == "3":
+        elif respuesta == 3:
             eliminar_usuario()
-        elif opcion == "4":
+        elif respuesta == 4:
             mostrar_usuarios()
-        elif opcion == "5":
+        elif respuesta == 5:
             logout()
-        elif opcion == "0":
+        elif respuesta == 0:
             return
-        else:
-            print("\n⚠️  Opción inválida. Intente nuevamente.")
 
 ### PROGRAMA ###
 

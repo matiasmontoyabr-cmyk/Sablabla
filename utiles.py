@@ -137,6 +137,48 @@ def formatear_fecha(fecha_iso):
 def marca_de_tiempo():
     return datetime.now().strftime("%d-%m-%Y %H:%M")
 
+def opcion_menu(mensaje, cero=False, vacio=False, minimo=None, maximo=None):
+    # Solicita una opción numérica al usuario, validando contra una serie de reglas.
+    # Retorna el entero validado, 0 si se permite y elige cancelar, o None si se permite vacío.
+
+    while True:
+        entrada = input(f"{mensaje} ").strip()
+
+        # 1. Validar entrada vacía (Enter)
+        if not entrada:
+            if vacio:
+                return None
+            else:
+                print("\n⚠️ Tenés que ingresar una opción.")
+                continue
+
+        # 2. Validar cancelación (Cero)
+        if entrada == "0":
+            if cero:
+                return 0
+            else:
+                print("\n⚠️ '0' no es una opción valida.")
+                continue
+
+        # 3. Intentar convertir a número entero
+        try:
+            opcion = int(entrada)
+        except ValueError:
+            print("\n⚠️  La opción debe ser un número: ")
+            continue
+            
+        # 4. Validar contra el rango (Mínimo/Máximo)
+        if minimo is not None and opcion < minimo:
+            print(f"\n⚠️  Opción inválida, debe ser igual o mayor que {minimo}.")
+            continue
+        
+        if maximo is not None and opcion > maximo:
+            print(f"\n⚠️  Opción inválida, debe ser igual o menor que {maximo}.")
+            continue
+
+        # 5. Éxito
+        return opcion
+
 def pedir_entero(mensaje, minimo=None, maximo=None, defecto=None):
     while True:
         respuesta_entero = input(mensaje).strip()
@@ -212,10 +254,10 @@ def pedir_precio(mensaje="Ingrese el precio: "):
         except ValueError:
             print("\n❌ Ingrese un número válido (ej: 1499.90).")
 
-def pedir_habitación(checkin, checkout, contingente):
+def pedir_habitación(checkin, checkout, contingente, excluir_numero=None):
     while True:
-            habitacion = pedir_entero("Ingrese el número de habitación: ", minimo=1 , maximo=7)
-            if habitacion_ocupada(habitacion, checkin, checkout):
+            habitacion = pedir_entero("Ingresá el número de habitación: ", minimo=1 , maximo=7)
+            if habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=excluir_numero):
                 print(f"\n⚠️  La habitación {habitacion} ya está ocupada en esas fechas.")
                 continue
             if habitacion in HABITACIONES:
@@ -227,7 +269,7 @@ def pedir_habitación(checkin, checkout, contingente):
             else:
                 print(f"\n⚠️  La habitación {habitacion} no está definida en la configuración.")
                 continue
-            break
+            return habitacion
 
 def habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=None):
     """

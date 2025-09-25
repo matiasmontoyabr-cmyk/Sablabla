@@ -225,7 +225,7 @@ def _ejecutar_busqueda(criterio, valor):
             productos_ordenados = [prod_score[0] for prod_score in resultados]
             return productos_ordenados
         else:
-            return []] # Si el criterio no es reconocido, devuelve una lista vacía
+            return [] # Si el criterio no es reconocido, devuelve una lista vacía
 
 def actualizar_producto_db(database, codigo, campo, valor):
     database.ejecutar(f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?", (valor, codigo))
