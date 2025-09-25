@@ -4,7 +4,7 @@ import usuarios
 from datetime import datetime, date
 from db import db
 from unidecode import unidecode
-from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo
+from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación
 
 @usuarios.requiere_acceso(1)
 def nuevo_huesped():
@@ -57,9 +57,7 @@ def nuevo_huesped():
             continue
         break
     contingente = pedir_entero("Ingrese la cantidad de huéspedes: ",minimo=1,maximo=4)
-    while True:
-        telefono = pedir_telefono("Ingrese un whatsapp de contacto: ")
-        break
+    telefono = pedir_telefono("Ingrese un whatsapp de contacto: ")
     email = pedir_mail()
     booking = pedir_confirmacion("¿Es una reserva de booking? si/no: ")
     checkin = pedir_fecha_valida("Ingrese la fecha de checkin: ", allow_past=True)
@@ -273,7 +271,7 @@ def buscar_huesped():
     return
 
 @usuarios.requiere_acceso(1)
-def cambiar_estado():
+def cambiar_estado_b():
     while True:
         numero = input("\nIngrese el número de huésped que desea cambiar de estado, (*) para buscar ó (0) para cancelar: ").strip()
         if numero == "*":
@@ -436,6 +434,222 @@ def cambiar_estado():
                 print(f"\n❌ Error al cerrar el huésped: {e}")
 
     return
+
+@usuarios.requiere_acceso(1)
+def cambiar_estado():
+    #Función principal que orquesta el cambio de estado."""
+    
+    # 1. Obtener huésped
+    numero = _obtener_huesped()
+    if numero is None:
+        return
+
+    # 2. Seleccionar estado
+    nuevo_estado = _nuevo_estado()
+    if nuevo_estado is None:
+        return
+
+    # 3. Preparar datos comunes
+    registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+    registro_anterior = str(registro_anterior_data["REGISTRO"] or "") if registro_anterior_data else ""
+    separador = "\n---\n"
+    
+    # 4. Delegar la ejecución
+    if nuevo_estado == "PROGRAMADO":
+        _actualizar_a_programado(db, numero, registro_anterior, separador)
+    elif nuevo_estado == "ABIERTO":
+        _actualizar_a_abierto(db, numero, registro_anterior, separador)
+    elif nuevo_estado == "CERRADO":
+        _actualizar_a_cerrado(db, numero, registro_anterior, separador)
+    
+    # La función termina aquí, el programa vuelve al menú principal.
+
+def _obtener_huesped():
+    #Bucle de entrada para obtener y validar el número de huésped."""
+    while True:
+        numero = input("\nIngresá el número de huésped que deseas cambiar de estado, (*) para buscar ó (0) para cancelar: ").strip()
+        if numero == "*":
+            buscar_huesped() # Llamar a la función de búsqueda
+            return None      # Volver al menú o repetir la llamada a cambiar_estado
+        if numero == "0":
+            print("\n❌ Cambio cancelado.")
+            return None
+        if not numero.isdigit():
+            print("\n⚠️  Número inválido. Intente nuevamente.")
+            continue
+
+        numero = int(numero)
+        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+        
+        if huesped is None:
+            print("\n⚠️  Huésped no encontrado. Intente nuevamente.")
+            continue
+        
+        imprimir_huesped(huesped)
+        return numero # Devuelve el número de huésped validado
+
+def _nuevo_estado():
+    # Bucle de entrada para seleccionar y validar el nuevo estado."""
+    opciones = {"1": "PROGRAMADO","2": "ABIERTO","3": "CERRADO"}
+    
+    while True:
+        seleccion = input('\n¿A qué estado querés cambiar?\nIngresá (1) "PROGRAMADO", (2) "ABIERTO", (3) "CERRADO", ó (0) para cancelar: ').strip()
+
+        if seleccion == "0":
+            return None # Cancelar selección
+        if seleccion not in opciones:
+            print("\n⚠️  Opción inválida. Intente nuevamente.")
+            continue
+        
+        return opciones[seleccion] # Devuelve el nombre del estado
+
+def _actualizar_a_programado(db, numero, registro_anterior, separador):
+    """Maneja la lógica para cambiar el estado a PROGRAMADO."""
+    # 1. Adquisición y validación de fechas/nacimiento (se debe mover aquí)
+    checkin = pedir_fecha_valida("Ingresá la nueva fecha de checkin (DD-MM-YYYY): ")
+    checkout = pedir_fecha_valida("Ingresá la nueva fecha de checkout (DD-MM-YYYY): ")
+    while checkout < checkin:
+        print("\n⚠️  La fecha de checkout no puede ser anterior al checkin.")
+        checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente (DD-MM-YYYY): ")
+    
+    nacimiento_data = db.obtener_uno("SELECT NACIMIENTO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+    nacimiento = nacimiento_data["NACIMIENTO"] if nacimiento_data and "NACIMIENTO" in nacimiento_data else 0
+    if nacimiento < 1900:
+        nacimiento = pedir_entero("Ingresá el año de nacimiento: ", minimo=1900)
+    
+    # 2. Construcción del registro y updates
+    registro_nuevo = f"Estado modificado a PROGRAMADO - {datetime.now().isoformat(sep=' ', timespec='seconds')}"
+    registro = registro_anterior + separador + registro_nuevo if registro_anterior.strip() else registro_nuevo
+    
+    updates = {
+        "ESTADO": "PROGRAMADO", 
+        "CHECKIN": checkin, 
+        "CHECKOUT": checkout, 
+        "HABITACION": 0, 
+        "NACIMIENTO": nacimiento, 
+        "REGISTRO": registro
+    }
+    
+    # 3. Ejecución y manejo de errores
+    try:
+        # Asumo que editar_huesped_db() es una función auxiliar que llama a db.ejecutar
+        editar_huesped_db(db, numero, updates) 
+        print("\n✔ Estado actualizado a PROGRAMADO.")
+        return True
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el estado a PROGRAMADO: {e}")
+        return False
+
+def _actualizar_a_abierto(db, numero, registro_anterior, separador):
+    # Maneja la lógica para cambiar el estado a ABIERTO.
+    hoy = date.today().isoformat()
+    
+    # 1. Adquisición y validación de datos
+    checkout = pedir_fecha_valida("Ingresá la fecha de checkout (DD-MM-YYYY): ")
+    while checkout < hoy:
+        print("\n⚠️  La fecha de checkout no puede ser anterior al checkin (hoy).")
+        checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente (DD-MM-YYYY): ")
+    
+    documento = input("Ingresá el documento: ").strip()
+    
+    nacimiento = db.obtener_uno("SELECT NACIMIENTO FROM HUESPEDES WHERE NUMERO = ?", (numero,))["NACIMIENTO"]
+    if nacimiento < 1900:
+        nacimiento = pedir_entero("Ingresá el año de nacimiento: ", minimo=1900)
+
+    while True: # Mantener solo este bucle para la validación de HABITACIÓN
+        habitacion = pedir_entero("Ingresá el número de habitación: ", minimo=1, maximo=7)
+        if habitacion_ocupada(habitacion, hoy, checkout, excluir_numero=numero):
+            print(f"\n⚠️  La habitación {habitacion} ya está ocupada en esas fechas.")
+            continue
+        break
+        
+    contingente = pedir_entero("Ingresá la cantidad de huéspedes: ", minimo=1, maximo=4)
+    
+    # 2. Construcción del registro y updates
+    registro_nuevo = f"Estado modificado a ABIERTO - {datetime.now().isoformat(sep=' ', timespec='seconds')}"
+    registro = registro_anterior + separador + registro_nuevo
+
+    updates = {
+        "ESTADO": "ABIERTO", "CHECKIN": hoy, "CHECKOUT": checkout, 
+        "DOCUMENTO": documento, "NACIMIENTO": nacimiento, 
+        "HABITACION": habitacion, "CONTINGENTE": contingente, 
+        "REGISTRO": registro
+    }
+    
+    # 3. Ejecución y manejo de errores
+    try:
+        editar_huesped_db(db, numero, updates)
+        print(f"\n✔ Estado actualizado a ABIERTO.")
+        return True
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el estado a ABIERTO: {e}")
+        return False
+
+def _actualizar_a_cerrado(db, numero, registro_anterior, separador):
+    # Maneja la lógica para cambiar el estado a CERRADO."""
+    hoy = date.today().isoformat()
+    
+    # 1. Lógica de Consumos y Pago
+    query = """
+        SELECT C.CANTIDAD, P.PRECIO
+        FROM CONSUMOS C JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
+        WHERE C.HUESPED = ? AND C.PAGADO = 0
+    """
+    consumos_no_pagados = db.obtener_todos(query, (numero,))
+    if consumos_no_pagados:
+        total_pendiente = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados) # Asumo que la fila DB es un dict/Row
+
+        if total_pendiente > 0:
+            print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
+            respuesta_pago = pedir_confirmacion("\n⚠️  ¿Desea marcar estos consumos como pagados? (si/no): ")
+
+            if respuesta_pago == "si":
+                try:
+                    # Actualiza consumos y añade registro de pago (si es exitoso)
+                    db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero,))
+                    
+                    timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
+                    registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {timestamp}"
+                    registro_anterior += separador + registro_pago # Actualiza el registro_anterior para el paso 2
+                    
+                    print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
+                except Exception as e:
+                    print(f"\n❌ Error al marcar consumos como pagados: {e}")
+                    return False # Si el pago falla, abortar el cierre.
+            else:
+                confirmar_cierre = pedir_confirmacion("\n⚠️ ¿Deseás cerrar el huésped aun con consumos impagos? (si/no): ")
+                if confirmar_cierre != "si":
+                    print("\n❌ Cierre cancelado.")
+                    return False
+        else:
+            print("\n✔ No hay consumos pendientes de pago para este huésped.")
+        
+    # 2. Lógica de Cierre y Log
+    registro_nuevo = f"Estado modificado a CERRADO - {datetime.now().isoformat(sep=' ', timespec='seconds')}"
+    registro = registro_anterior + separador + registro_nuevo
+    updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro}
+
+    try:
+        # Ejecución del cierre
+        editar_huesped_db(db, numero, updates) 
+        
+        # Log de cierre (extraer la lógica de log a una función auxiliar es aún mejor)
+        huesped_data = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+        # ... (código de log simplificado)
+        log = (
+                    f"[{marca_de_tiempo()}] HUÉSPED CERRADO:\n"
+                    f"Nombre: {huesped_data['NOMBRE']} {huesped_data['APELLIDO']} | Habitación: {huesped_data['HABITACION']} | Estado anterior: {huesped_data['ESTADO']}\n"
+                    f"Total de consumos no pagados al momento del cierre: R {total_pendiente:.2f}\n"
+                    f"Registro previo:\n{registro_anterior.strip()}"
+                    f"Acción realizada por: {usuarios.sesion.usuario}"
+                )
+        registrar_log("huespedes_cerrados.log", log)
+        
+        print(f"\n✔ Huésped cerrado.")
+        return True
+    except Exception as e:
+        print(f"\n❌ Error al cerrar el huésped: {e}")
+        return False
 
 def editar_huesped_db(database, numero, updates_dict):
     """

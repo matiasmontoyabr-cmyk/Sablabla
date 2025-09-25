@@ -1,5 +1,8 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
+#Aplicar pedir_habitación a _actualizar_a_programdo() en huespedes.py
+#Aplicar pedir_habitación a _actualizar_a_abierto() en huespedes.py
+
 #Inventario para consumibles/vajilla/mayoristas. Ver si se puede relacionar con productos o crear tabla nueva.
 
 #El sistema de consumos ya descuenta stock y marca pagos. Podría ser útil agregar un trigger o constraint en la DB para que nunca quede stock negativo

@@ -212,6 +212,23 @@ def pedir_precio(mensaje="Ingrese el precio: "):
         except ValueError:
             print("\n❌ Ingrese un número válido (ej: 1499.90).")
 
+def pedir_habitación(checkin, checkout, contingente):
+    while True:
+            habitacion = pedir_entero("Ingrese el número de habitación: ", minimo=1 , maximo=7)
+            if habitacion_ocupada(habitacion, checkin, checkout):
+                print(f"\n⚠️  La habitación {habitacion} ya está ocupada en esas fechas.")
+                continue
+            if habitacion in HABITACIONES:
+                capacidad = HABITACIONES[habitacion]["capacidad"]
+                if contingente > capacidad:
+                    print(f"\n⚠️  La habitación {habitacion} ({HABITACIONES[habitacion]['tipo']}) "
+                        f"tiene capacidad para {capacidad} pasajeros, pero el contingente es de {contingente}.")
+                    continue
+            else:
+                print(f"\n⚠️  La habitación {habitacion} no está definida en la configuración.")
+                continue
+            break
+
 def habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=None):
     """
     Verifica si una habitación está ocupada (ABIERTO o PROGRAMADO)

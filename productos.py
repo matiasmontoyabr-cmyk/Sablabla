@@ -87,7 +87,7 @@ def listado_productos():
         return
 
 @usuarios.requiere_acceso(0)
-def buscar_producto():
+def buscar_producto_b():
     while True:
         criterio = input("\nIngrese el nombre o código del producto, (*) para ver todos, ó (0) para cancelar: ").strip()
         if not criterio:
@@ -141,6 +141,91 @@ def buscar_producto():
             except Exception as e:
                 # Si algo sale mal, imprime el error y sigue el programa
                 print(f"\n❌ Error al realizar la búsqueda: {e}")
+
+@usuarios.requiere_acceso(0)
+def buscar_producto():
+    opcion = None
+    while True:
+        entrada = input("\nIngresá el nombre o código del producto, (*) para ver todos, ó (0) para cancelar: ").strip()
+        
+        if not entrada:
+            print("\n⚠️  Tenés que ingresar al menos un número o una palabra para buscar.")
+            continue
+
+        if entrada == "0":
+            print("❌ Búsqueda cancelada.")
+            return
+        
+        if not entrada.isdigit() and entrada != '*':
+            # Aplicamos la misma lógica de limpieza que usaríamos para la búsqueda por nombre
+            criterio_limpio = re.sub(r"[^a-zA-Z0-9\s/]", "", unidecode(entrada).lower().replace('-', ' ').replace('_', ' ').replace('/', ' '))
+            
+            # Si después de limpiar y dividir, la lista de palabras queda vacía
+            if not criterio_limpio.split():
+                 print("\n⚠️ El texto ingresado solo contenía caracteres inválidos. Intentá de nuevo.")
+                 continue # Vuelve al inicio del bucle
+
+        opcion = entrada
+        break
+
+    if opcion == "*":
+        productos = db.obtener_todos("SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS")
+        if not productos:
+            print("\n❌ No hay productos registrados.")
+            return
+        imprimir_productos(productos)
+        return
+
+    # Búsqueda por código (más directa)
+    elif opcion.isdigit():
+        codigo = int(opcion)
+        # Ejecutamos la búsqueda específica
+        producto = _ejecutar_busqueda("codigo", codigo) 
+
+        if producto:
+            imprimir_producto(producto)
+            return
+        else:
+            print("\n⚠️  No se encontró un producto con ese código.")
+            return
+
+    # Búsqueda por nombre (más flexible)
+    else:
+        criterio_limpio = re.sub(r"[^a-zA-Z0-9\s/]", "", unidecode(opcion).lower().replace('-', ' ').replace('_', ' ').replace('/', ' '))
+        criterios = criterio_limpio.split()
+        resultados = _ejecutar_busqueda("nombre", criterios)
+
+    # 3. Mostrar resultados y decidir si continuar
+    if resultados:
+        imprimir_productos(resultados)
+        return
+    else:
+        print("\n❌ No se encontraron productos que coincidan con la búsqueda.")
+        return
+
+def _ejecutar_busqueda(criterio, valor):
+    #Genera y ejecuta la consulta SQL basada en el criterio dado."""
+    
+    if criterio == "codigo":
+        query = "SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?"
+        # Como el código es único, obtener solo uno es más eficiente
+        return db.obtener_uno(query, (valor,))
+
+    elif criterio == "nombre":
+        where_clauses = ["LOWER(NOMBRE) LIKE ?"] * len(valor)
+        params = [f"%{palabra}%" for palabra in valor]
+        
+        # Usar LIKE para búsquedas parciales (añadir comodines % manualmente)
+        query = f"SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE {' OR '.join(where_clauses)} ORDER BY NOMBRE"
+        productos = db.obtener_todos(query, params)
+
+        if productos:
+            resultados = [(prod, sum(1 for palabra in valor if palabra in prod["NOMBRE"].lower())) for prod in productos]
+            resultados.sort(key=lambda x: x[1], reverse=True)
+            productos_ordenados = [prod_score[0] for prod_score in resultados]
+            return productos_ordenados
+        else:
+            return []] # Si el criterio no es reconocido, devuelve una lista vacía
 
 def actualizar_producto_db(database, codigo, campo, valor):
     database.ejecutar(f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?", (valor, codigo))
