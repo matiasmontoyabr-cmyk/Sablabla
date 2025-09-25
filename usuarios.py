@@ -4,7 +4,7 @@ import time
 from db import db
 from functools import wraps
 from getpass import getpass
-from utiles import pedir_entero, pedir_confirmacion
+from utiles import pedir_entero, pedir_confirmacion, opcion_menu
 
 class SesionActiva:
     def __init__(self):
@@ -169,13 +169,14 @@ def crear_usuario():
 
 @requiere_acceso(3)
 def mostrar_usuarios():
-    """Muestra la lista de usuarios para que el Superusuario los gestione."""
+    #Muestra la lista de usuarios para que el Superusuario los gestione.
     lista_usuarios = db.obtener_todos("SELECT USUARIO, NIVEL_DE_ACCESO FROM USUARIOS")
 
     print("\n--- Usuarios del sistema ---")
     for usuario, nivel in lista_usuarios:
         print(f"  - Usuario: {usuario} | Nivel: {nivel}")
     print("----------------------------")
+    input("\nPresiona enter para continuar...")
 
 @requiere_acceso(3)
 def editar_usuario():
@@ -191,38 +192,43 @@ def editar_usuario():
             print("\n⚠️  El nombre de usuario no puede estar vacío.")
             continue
         else:
-            opcion_editar = input("¿Qué desea editar? La contraseña (1) o el nivel de acceso (2) ó el nombre (3): ").strip()
-            if opcion_editar == "1":
-                contraseña = getpass("Ingresa la nueva contraseña: ")
-                try:
-                    contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                    db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
-                    print(f"\n✔ Contraseña de '{usuario}' modificada.")
-                except Exception as e:
-                    print(f"\n❌ Error al modificar la contraseña de '{usuario}': {e}")
-                return
-            elif opcion_editar == "2":
-                nuevo_nivel = pedir_entero("Ingresa el nuevo nivel de acceso (0, 1, 2): ", minimo=0, maximo=2)
-                try:
-                    db.ejecutar("UPDATE USUARIOS SET NIVEL_DE_ACCESO=? WHERE USUARIO=?", (nuevo_nivel, usuario))
-                    print(f"\n✔ Nivel de acceso de '{usuario}' modificado a {nuevo_nivel}.")
-                except Exception as e:
-                    print(f"\n❌ Error al modificar el nivel de acceso de '{usuario}': {e}")
-                return
-            elif opcion_editar == "3":
-                while True:
-                    nuevo_nombre = input("Ingresa el nuevo nombre de usuario: ").strip()
-                    if not nuevo_nombre:
-                        print("\n⚠️  El nombre de usuario no puede estar vacío.")
-                        continue
-                    else:
-                        try:
-                            db.ejecutar("UPDATE USUARIOS SET USUARIO=? WHERE USUARIO=?", (nuevo_nombre, usuario))
-                            print(f"\n✔ Nombre de usuario de '{usuario}' modificado a {nuevo_nombre}.")
-                        except Exception as e:
-                            print(f"\n❌ Error al modificar el nombre de usuario de '{usuario}': {e}")
-                        break
-                return
+            leyenda = "¿Qué querés editar? (1) La contraseña, (2) el nivel de acceso, (3) el nombre ó (0) para cancelar: "
+            while True:
+                opcion_editar = opcion_menu(leyenda, cero=True, minimo=1, maximo=3)
+                if opcion_editar == 0:
+                    print("\n❌ Operación cancelada.")
+                    return
+                if opcion_editar == 1:
+                    contraseña = getpass("Ingresa la nueva contraseña: ")
+                    try:
+                        contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                        db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
+                        print(f"\n✔ Contraseña de '{usuario}' modificada.")
+                    except Exception as e:
+                        print(f"\n❌ Error al modificar la contraseña de '{usuario}': {e}")
+                    return
+                elif opcion_editar == 2:
+                    nuevo_nivel = pedir_entero("Ingresa el nuevo nivel de acceso (0, 1, 2): ", minimo=0, maximo=2)
+                    try:
+                        db.ejecutar("UPDATE USUARIOS SET NIVEL_DE_ACCESO=? WHERE USUARIO=?", (nuevo_nivel, usuario))
+                        print(f"\n✔ Nivel de acceso de '{usuario}' modificado a {nuevo_nivel}.")
+                    except Exception as e:
+                        print(f"\n❌ Error al modificar el nivel de acceso de '{usuario}': {e}")
+                    return
+                elif opcion_editar == 3:
+                    while True:
+                        nuevo_nombre = input("Ingresa el nuevo nombre de usuario: ").strip()
+                        if not nuevo_nombre:
+                            print("\n⚠️  El nombre de usuario no puede estar vacío.")
+                            continue
+                        else:
+                            try:
+                                db.ejecutar("UPDATE USUARIOS SET USUARIO=? WHERE USUARIO=?", (nuevo_nombre, usuario))
+                                print(f"\n✔ Nombre de usuario de '{usuario}' modificado a {nuevo_nombre}.")
+                            except Exception as e:
+                                print(f"\n❌ Error al modificar el nombre de usuario de '{usuario}': {e}")
+                            break
+                    return
 
 @requiere_acceso(3)
 def eliminar_usuario():
@@ -235,7 +241,7 @@ def eliminar_usuario():
             mostrar_usuarios()
             continue
         else:
-            confirmacion = pedir_confirmacion(f"\n⚠️¿Estás seguro de que quieres eliminar a '{usuario}'? (si/no): ")
+            confirmacion = pedir_confirmacion(f"\n⚠️¿Estás seguro de que querés eliminar a '{usuario}'? (si/no): ")
             if confirmacion == "si":
                 # Elimina un usuario de la base de datos.
                 try:

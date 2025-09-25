@@ -4,28 +4,25 @@ import usuarios
 from datetime import datetime, date
 from db import db
 from unidecode import unidecode
-from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación
+from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación, opcion_menu
 
 @usuarios.requiere_acceso(1)
 def nuevo_huesped():
     estado = None
     documento = 0
-    nacimiento = 0
     habitacion = 0
+    leyenda = "\n¿Querés agregar un huesped programado (1), un checkin (2) o cancelar (0)?: "
     while True:
-        pregunta_estado = input("\n¿Quiere agregar un huesped programado (1), un checkin (2) o cancelar (0)?: ").strip()
-        if pregunta_estado == "1":
+        pregunta_estado = opcion_menu(leyenda, cero=True, minimo=1, maximo=2)
+        if pregunta_estado == 1:
             estado = "PROGRAMADO"
             break
-        elif pregunta_estado == "2":
+        elif pregunta_estado == 2:
             estado = "ABIERTO"
             break
-        elif pregunta_estado == "0":
+        elif pregunta_estado == 0:
             print("\n❌ Registro de huésped cancelado.")
             return
-        else:
-            print("\n⚠️  Respuesta inválida. Intente nuevamente. ")
-            continue
     while True:
         respuesta_apellido = input("Escriba el apellido del huesped ó (0) para cancelar: ").strip()
         if respuesta_apellido == "0":
@@ -42,7 +39,7 @@ def nuevo_huesped():
             continue
         break
     while True:
-        respuesta_nombre = input("Escriba el nombre del huesped ó (0) para cancelar: ").strip()
+        respuesta_nombre = input("Escribí el nombre del huesped ó (0) para cancelar: ").strip()
         if respuesta_nombre == "0":
             print("\n❌ Registro de huésped cancelado.")
             return
@@ -56,21 +53,20 @@ def nuevo_huesped():
             print("\n⚠️  El nombre del huésped no puede contener solo caracteres especiales o signos.")
             continue
         break
-    contingente = pedir_entero("Ingrese la cantidad de huéspedes: ",minimo=1,maximo=4)
-    telefono = pedir_telefono("Ingrese un whatsapp de contacto: ")
+    contingente = pedir_entero("Ingresá la cantidad de huéspedes: ",minimo=1,maximo=4)
+    telefono = pedir_telefono("Ingresá un whatsapp de contacto: ")
     email = pedir_mail()
-    booking = pedir_confirmacion("¿Es una reserva de booking? si/no: ")
-    checkin = pedir_fecha_valida("Ingrese la fecha de checkin: ", allow_past=True)
-    checkout = pedir_fecha_valida("Ingrese la fecha de checkout: ")
+    aplicativo = pedir_confirmacion("¿Es una reserva de aplicativo? si/no: ")
+    checkin = pedir_fecha_valida("Ingresá la fecha de checkin: ", allow_past=True)
+    checkout = pedir_fecha_valida("Ingresá la fecha de checkout: ")
     while checkout < checkin:
         print("\n⚠️  La fecha de checkout no puede ser anterior al checkin.")
-        checkout = pedir_fecha_valida("Ingrese la fecha de checkout nuevamente: ")
+        checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente: ")
     if estado == "ABIERTO":
-        documento = input("Ingerse el documento: ").strip()
-        nacimiento = pedir_entero("Ingrese el año de nacimiento: ", minimo=1900)
+        documento = input("Ingersá el número de documento: ").strip()
     if estado in ("ABIERTO", "PROGRAMADO"):
         while True:
-            habitacion = pedir_entero("Ingrese el número de habitación: ", minimo=1 , maximo=7)
+            habitacion = pedir_entero("Ingresá el número de habitación: ", minimo=1 , maximo=7)
             if habitacion_ocupada(habitacion, checkin, checkout):
                 print(f"\n⚠️  La habitación {habitacion} ya está ocupada en esas fechas.")
                 continue
@@ -81,23 +77,23 @@ def nuevo_huesped():
                         f"tiene capacidad para {capacidad} pasajeros, pero el contingente es de {contingente}.")
                     continue
             else:
-                print(f"\n⚠️  La habitación {habitacion} no está definida en la configuración.")
+                print(f"\n⚠️  La habitación {habitacion} no está definida.")
                 continue
             break
     registro = f"CREADO {estado} - {marca_de_tiempo()}"
 
-    data = {"apellido": apellido, "nombre": nombre, "telefono": telefono, "email": email, "booking": booking, "estado": estado, "checkin": checkin, "checkout": checkout, "documento": documento, "nacimiento": nacimiento, "habitacion": habitacion, "contingente": contingente, "registro": registro}
+    data = {"apellido": apellido, "nombre": nombre, "telefono": telefono, "email": email, "aplicativo": aplicativo, "estado": estado, "checkin": checkin, "checkout": checkout, "documento": documento, "habitacion": habitacion, "contingente": contingente, "registro": registro}
 
     try:
         sql = """
         INSERT INTO HUESPEDES (
-            APELLIDO, NOMBRE, TELEFONO, EMAIL, BOOKING, ESTADO,
-            CHECKIN, CHECKOUT, DOCUMENTO, NACIMIENTO, HABITACION,
+            APELLIDO, NOMBRE, TELEFONO, EMAIL, APP, ESTADO,
+            CHECKIN, CHECKOUT, DOCUMENTO, HABITACION,
             CONTINGENTE, REGISTRO
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        valores = (data["apellido"],data["nombre"], data["telefono"], data["email"], data["booking"],
-            data["estado"], data["checkin"], data["checkout"], data["documento"], data["nacimiento"],
+        valores = (data["apellido"],data["nombre"], data["telefono"], data["email"], data["aplicativo"],
+            data["estado"], data["checkin"], data["checkout"], data["documento"],
             data["habitacion"], data["contingente"], data["registro"])
         
         db.ejecutar(sql, valores)
@@ -108,9 +104,10 @@ def nuevo_huesped():
 
 @usuarios.requiere_acceso(1)
 def cerrar_habitacion():
+    leyenda = "\nIngresá el número de habitación a cerrar, (*) para buscar ó (0) para cancelar: "
     while True:
-        habitacion = input("\nIngrese el número de habitación a cerrar, (*) para buscar ó (0) para cancelar: ").strip()
-        if habitacion == "0":
+        habitacion = opcion_menu(leyenda, cero=True, minimo=1, maximo=7,)
+        if habitacion == 0:
             return
         if habitacion == "*":
             abiertas = db.obtener_todos("SELECT HABITACION, APELLIDO, NOMBRE FROM HUESPEDES WHERE ESTADO = 'ABIERTO' ORDER BY HABITACION")
@@ -121,17 +118,14 @@ def cerrar_habitacion():
                 print("\n📋 Habitaciones abiertas:")
                 print(f"{'HAB':<5} {'APELLIDO':<20} {'NOMBRE':<20}")
                 print("-" * 45)
-                for hab, ape, nom in abiertas:
-                    apellido_display = ' '.join(word.capitalize() for word in str(ape).split())
-                    nombre_display = ' '.join(word.capitalize() for word in str(nom).split())
-                    print(f"{hab:<5} {apellido_display:<20} {nombre_display:<20}")
+                for huesped in abiertas:
+                    hab = huesped["HABITACION"]
+                    ape = huesped["APELLIDO"]
+                    nom = huesped["NOMBRE"]
+                    print(f"{hab:<5} {ape:<20} {nom:<20}")
                 print("-" * 45)
             continue
-        if not habitacion.isdigit():
-            print("\n⚠️  Número inválido.")
-            continue
 
-        habitacion = int(habitacion)
         # Buscar huésped ABIERTO en esa habitación
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", (habitacion,))
         if huesped is None:
@@ -152,11 +146,11 @@ def cerrar_habitacion():
             WHERE C.HUESPED = ? AND C.PAGADO = 0
         """
         consumos_no_pagados = db.obtener_todos(query, (numero,))
-        total_pendiente = sum(cant * precio for cant, precio in consumos_no_pagados)
+        total_pendiente = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados)
 
         if consumos_no_pagados:
             print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
-            respuesta_pago = pedir_confirmacion("\n⚠️¿Desea marcar estos consumos como pagados? (si/no): ")
+            respuesta_pago = pedir_confirmacion("\n⚠️¿Querés marcar estos consumos como pagados? (si/no): ")
             if respuesta_pago == "si":
                 try:
                     db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero,))
@@ -168,7 +162,7 @@ def cerrar_habitacion():
                 except Exception as e:
                     print(f"\n❌ Error al marcar consumos como pagados: {e}")
             else:
-                confirmar_cierre = pedir_confirmacion("\n⚠️  ¿Desea cerrar la habitación aun con consumos impagos? (si/no): ")
+                confirmar_cierre = pedir_confirmacion("\n⚠️  ¿Querés cerrar la habitación aun con consumos impagos? (si/no): ")
                 if confirmar_cierre != "si":
                     print("\n❌ Cierre cancelado.")
                     return
@@ -218,17 +212,18 @@ def cerrar_habitacion():
 @usuarios.requiere_acceso(0)
 def buscar_huesped():
     opciones = {
-        "1": ("APELLIDO", lambda: input("Ingrese el apellido: ").strip()),
-        "2": ("NUMERO", lambda: input("Ingrese el número de huesped: ").strip()),
-        "3": ("HABITACION", lambda: input("Ingrese el número de habitación: ").strip()),
-        "4": ("DOCUMENTO", lambda: input("Ingrese el número de documento: ").strip()),
-        "5": ("*", None)  # Ver todos
+        1: ("APELLIDO", lambda: input("Ingresá el apellido: ").strip()),
+        2: ("NUMERO", lambda: input("Ingresá el número de huesped: ").strip()),
+        3: ("HABITACION", lambda: input("Ingresá el número de habitación: ").strip()),
+        4: ("DOCUMENTO", lambda: input("Ingresá el número de documento: ").strip()),
+        5: ("*", None)  # Ver todos
     }
 
+    leyenda = "\n¿Cómo querés buscar al huesped?\n1. Por apellido\n2. Por número de huesped\n3. Por número de habitación\n4. Por documento\n5. Imprimir todos\n0. Cancelar: "
     while True:
-        opcion = input("\n¿Cómo desea buscar al huesped?\n1. Por apellido\n2. Por número de huesped\n3. Por número de habitación\n4. Por documento\n5. Imprimir todos\n0. Cancelar\n").strip()
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=5,)
 
-        if opcion == "0":
+        if opcion == 0:
             return
 
         if opcion in opciones:
@@ -272,16 +267,14 @@ def buscar_huesped():
 
 @usuarios.requiere_acceso(1)
 def cambiar_estado_b():
+    leyenda = "\nIngresá el número de huésped que querés cambiar de estado, (*) para buscar ó (0) para cancelar: "
     while True:
-        numero = input("\nIngrese el número de huésped que desea cambiar de estado, (*) para buscar ó (0) para cancelar: ").strip()
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
         if numero == "*":
             return buscar_huesped()
-        if numero == "0":
+        if numero == 0:
             print("\n❌ Cambio cancelado.")
             return
-        if not numero.isdigit():
-            print("\n⚠️  Número inválido. Intente nuevamente.")
-            continue
 
         numero = int(numero)
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
@@ -295,7 +288,7 @@ def cambiar_estado_b():
     opciones = {"1": "PROGRAMADO","2": "ABIERTO","3": "CERRADO"}
 
     while True:
-        seleccion = input('\n¿A qué estado quiere cambiar\nIngrese (1) "PROGRAMADO", (2) "ABIERTO", (3) "CERRADO", ó (0) para cancelar: ').strip()
+        seleccion = input('\n¿A qué estado querés cambiar\nIngresá (1) "PROGRAMADO", (2) "ABIERTO", (3) "CERRADO", ó (0) para cancelar: ').strip()
 
         if seleccion == "0":
             print("\n❌ Cambio cancelado.")
@@ -312,21 +305,17 @@ def cambiar_estado_b():
         separador = "\n---\n"
 
         if nuevo_estado == "PROGRAMADO":
-            checkin = pedir_fecha_valida("Ingrese la nueva fecha de checkin (DD-MM-YYYY): ")
-            checkout = pedir_fecha_valida("Ingrese la nueva fecha de checkout (DD-MM-YYYY): ")
+            checkin = pedir_fecha_valida("Ingresá la nueva fecha de checkin (DD-MM-YYYY): ")
+            checkout = pedir_fecha_valida("Ingresá la nueva fecha de checkout (DD-MM-YYYY): ")
             while checkout < checkin:
                 print("\n⚠️  La fecha de checkout no puede ser anterior al checkin.")
-                checkout = pedir_fecha_valida("Ingrese la fecha de checkout nuevamente (DD-MM-YYYY): ")
-            nacimiento_data = db.obtener_uno("SELECT NACIMIENTO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-            nacimiento = nacimiento_data["NACIMIENTO"] if nacimiento_data and "NACIMIENTO" in nacimiento_data else ""
-            if nacimiento < 1900:
-                nacimiento = pedir_entero("Ingrese el año de nacimiento: ", minimo=1900)
+                checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente (DD-MM-YYYY): ")
             registro_nuevo = f"Estado modificado a {nuevo_estado} - {datetime.now().isoformat(sep=" ", timespec='seconds')}"
             if registro_anterior.strip():
                 registro = registro_anterior + separador + registro_nuevo
             else:
                 registro = registro_nuevo
-            updates = {"ESTADO": nuevo_estado, "CHECKIN": checkin, "CHECKOUT": checkout, "HABITACION": 0, "NACIMIENTO": nacimiento, "REGISTRO": registro}
+            updates = {"ESTADO": nuevo_estado, "CHECKIN": checkin, "CHECKOUT": checkout, "HABITACION": 0, "REGISTRO": registro}
             try:
                 editar_huesped_db(numero, updates)
                 print(f"\n✔ Estado actualizado a {nuevo_estado}.")
@@ -336,26 +325,23 @@ def cambiar_estado_b():
 
         elif nuevo_estado == "ABIERTO":
             checkin = hoy
-            checkout = pedir_fecha_valida("Ingrese la nueva fecha de checkout (DD-MM-YYYY): ")
+            checkout = pedir_fecha_valida("Ingresá la nueva fecha de checkout (DD-MM-YYYY): ")
             while checkout < checkin:
                 print("\n⚠️  La fecha de checkout no puede ser anterior al checkin.")
-                checkout = pedir_fecha_valida("Ingrese la fecha de checkout nuevamente (DD-MM-YYYY): ")
-            documento = input("Ingrese el documento: ").strip()
-            nacimiento = db.obtener_uno("SELECT NACIMIENTO FROM HUESPEDES WHERE NUMERO = ?", (numero,))["NACIMIENTO"]
-            if nacimiento < 1900:
-                nacimiento = pedir_entero("Ingrese el año de nacimiento: ", minimo=1900)
+                checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente (DD-MM-YYYY): ")
+            documento = input("Ingersá el número de documento: ").strip()
             while True:
-                habitacion = pedir_entero("Ingrese el número de habitación: ", minimo=1, maximo=7)
+                habitacion = pedir_entero("Ingresá el número de habitación: ", minimo=1, maximo=7)
                 if habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=numero):
                     print(f"\n⚠️  La habitación {habitacion} ya está ocupada en esas fechas.")
                     continue
                 break
-            contingente = pedir_entero("Ingrese la cantidad de huéspedes: ", minimo=1,maximo=4)
+            contingente = pedir_entero("Ingresá la cantidad de huéspedes: ", minimo=1,maximo=4)
             registro_nuevo = f"Estado modificado a {nuevo_estado} - {datetime.now().isoformat(sep=" ", timespec='seconds')}"
             registro = registro_anterior + separador + registro_nuevo
 
             # Unificar todas las actualizaciones en un diccionario
-            updates = {"ESTADO": nuevo_estado, "CHECKIN": checkin, "CHECKOUT": checkout, "DOCUMENTO": documento, "NACIMIENTO": nacimiento, "HABITACION": habitacion, "CONTINGENTE": contingente, "REGISTRO": registro}
+            updates = {"ESTADO": nuevo_estado, "CHECKIN": checkin, "CHECKOUT": checkout, "DOCUMENTO": documento, "HABITACION": habitacion, "CONTINGENTE": contingente, "REGISTRO": registro}
             try:
                 editar_huesped_db(numero, updates)
                 print(f"\n✔ Estado actualizado a {nuevo_estado}.")
@@ -375,7 +361,7 @@ def cambiar_estado_b():
 
             if consumos_no_pagados:
                 print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
-                respuesta_pago = pedir_confirmacion("\n⚠️  ¿Desea marcar estos consumos como pagados? (si/no): ")
+                respuesta_pago = pedir_confirmacion("\n⚠️  ¿Querés marcar estos consumos como pagados? (si/no): ")
 
                 if respuesta_pago == "si":
                     try:
@@ -394,7 +380,7 @@ def cambiar_estado_b():
                     except Exception as e:
                         print(f"\n❌ Error al marcar consumos como pagados: {e}")
                 else:
-                    confirmar_cierre = pedir_confirmacion("\n⚠️¿Desea cerrar el huésped aun con consumos impagos? (si/no): ")
+                    confirmar_cierre = pedir_confirmacion("\n⚠️¿Querés cerrar el huésped aun con consumos impagos? (si/no): ")
                     if confirmar_cierre != "si":
                         print("\n❌ Cierre cancelado.")
                         return
@@ -465,20 +451,17 @@ def cambiar_estado():
     # La función termina aquí, el programa vuelve al menú principal.
 
 def _obtener_huesped():
-    #Bucle de entrada para obtener y validar el número de huésped."""
+    # Bucle de entrada para obtener y validar el número de huésped.
+    leyenda = "\nIngresá el número de huésped que querés cambiar de estado, (*) para buscar ó (0) para cancelar: "
     while True:
-        numero = input("\nIngresá el número de huésped que deseas cambiar de estado, (*) para buscar ó (0) para cancelar: ").strip()
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
         if numero == "*":
             buscar_huesped() # Llamar a la función de búsqueda
             return None      # Volver al menú o repetir la llamada a cambiar_estado
-        if numero == "0":
+        if numero == 0:
             print("\n❌ Cambio cancelado.")
             return None
-        if not numero.isdigit():
-            print("\n⚠️  Número inválido. Intente nuevamente.")
-            continue
-
-        numero = int(numero)
+        
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
         
         if huesped is None:
@@ -491,34 +474,22 @@ def _obtener_huesped():
 def _nuevo_estado():
     # Bucle de entrada para seleccionar y validar el nuevo estado."""
     opciones = {"1": "PROGRAMADO","2": "ABIERTO","3": "CERRADO"}
-    
+    leyenda = "\n¿A qué estado querés cambiar?\nIngresá (1) PROGRAMADO, (2) ABIERTO, (3) CERRADO, ó (0) para cancelar: "
     while True:
-        seleccion = input('\n¿A qué estado querés cambiar?\nIngresá (1) "PROGRAMADO", (2) "ABIERTO", (3) "CERRADO", ó (0) para cancelar: ').strip()
-
-        if seleccion == "0":
+        seleccion = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1, maximo=3)
+        if seleccion == 0:
             return None # Cancelar selección
-        if seleccion not in opciones:
-            print("\n⚠️  Opción inválida. Intente nuevamente.")
-            continue
-        
         return opciones[seleccion] # Devuelve el nombre del estado
 
 def _actualizar_a_programado(numero, registro_anterior, separador):
-    """Maneja la lógica para cambiar el estado a PROGRAMADO."""
-    # 1. Adquisición y validación de fechas/nacimiento (se debe mover aquí)
+    # Maneja la lógica para cambiar el estado a PROGRAMADO.
+    # 1. Adquisición y validación de fechas
     checkin = pedir_fecha_valida("Ingresá la nueva fecha de checkin (DD-MM-YYYY): ")
     checkout = pedir_fecha_valida("Ingresá la nueva fecha de checkout (DD-MM-YYYY): ")
     while checkout < checkin:
         print("\n⚠️  La fecha de checkout no puede ser anterior al checkin.")
         checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente (DD-MM-YYYY): ")
-    
-    nacimiento_data = db.obtener_uno("SELECT NACIMIENTO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-    nacimiento = nacimiento_data["NACIMIENTO"] if nacimiento_data and "NACIMIENTO" in nacimiento_data else 0
-    if nacimiento < 1900:
-        nacimiento = pedir_entero("Ingresá el año de nacimiento: ", minimo=1900)
-    
     contingente = pedir_entero("Ingresá la cantidad de huéspedes: ", minimo=1, maximo=4)
-
     habitacion = pedir_habitación(checkin, checkout, contingente, numero)
 
     # 2. Construcción del registro y updates
@@ -531,7 +502,6 @@ def _actualizar_a_programado(numero, registro_anterior, separador):
         "CHECKOUT": checkout, 
         "HABITACION": habitacion,
         "CONTINGENTE": contingente,
-        "NACIMIENTO": nacimiento, 
         "REGISTRO": registro
     }
     
@@ -553,15 +523,8 @@ def _actualizar_a_abierto(numero, registro_anterior, separador):
     while checkout < hoy:
         print("\n⚠️  La fecha de checkout no puede ser anterior al checkin (hoy).")
         checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente (DD-MM-YYYY): ")
-    
-    documento = input("Ingresá el documento: ").strip()
-    
-    nacimiento = db.obtener_uno("SELECT NACIMIENTO FROM HUESPEDES WHERE NUMERO = ?", (numero,))["NACIMIENTO"]
-    if nacimiento < 1900:
-        nacimiento = pedir_entero("Ingresá el año de nacimiento: ", minimo=1900)
-
+    documento = input("Ingersá el número de documento: ").strip()
     contingente = pedir_entero("Ingresá la cantidad de huéspedes: ", minimo=1, maximo=4)
-
     habitacion = pedir_habitación(hoy, checkout, contingente, numero)
     
     # 2. Construcción del registro y updates
@@ -570,9 +533,8 @@ def _actualizar_a_abierto(numero, registro_anterior, separador):
 
     updates = {
         "ESTADO": "ABIERTO", "CHECKIN": hoy, "CHECKOUT": checkout, 
-        "DOCUMENTO": documento, "NACIMIENTO": nacimiento, 
-        "HABITACION": habitacion, "CONTINGENTE": contingente, 
-        "REGISTRO": registro
+        "DOCUMENTO": documento, "HABITACION": habitacion,
+        "CONTINGENTE": contingente, "REGISTRO": registro
     }
     
     # 3. Ejecución y manejo de errores
@@ -600,7 +562,7 @@ def _actualizar_a_cerrado(numero, registro_anterior, separador):
 
         if total_pendiente > 0:
             print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
-            respuesta_pago = pedir_confirmacion("\n⚠️  ¿Desea marcar estos consumos como pagados? (si/no): ")
+            respuesta_pago = pedir_confirmacion("\n⚠️  ¿Querés marcar estos consumos como pagados? (si/no): ")
 
             if respuesta_pago == "si":
                 try:
@@ -673,16 +635,14 @@ def editar_huesped_db(numero, updates_dict):
 
 @usuarios.requiere_acceso(1)
 def editar_huesped():
+    leyenda = "\nIngresá el número de huésped que querés editar, (*) para buscar ó (0) para cancelar: "
     while True:
-        numero = input("\nIngrese el número de huésped que desea editar, (*) para buscar ó (0) para cancelar: ").strip()
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
         if numero == "*":
             return buscar_huesped()
-        if numero == "0":
+        if numero == 0:
             print("Edición cancelada.")
             return
-        if not numero.isdigit():
-            print("Número inválido. Intente nuevamente.")
-            continue
 
         numero = int(numero)
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
@@ -693,27 +653,25 @@ def editar_huesped():
         imprimir_huesped(huesped)
         break
     campos = {
-        "1": ("APELLIDO", lambda: input("\nIngrese el nuevo apellido: ").strip()),
-        "2": ("NOMBRE", lambda: input("\nIngrese el nuevo nombre: ").strip()),
-        "3": ("TELEFONO", lambda: pedir_telefono("\nIngrese el nuevo número de WhatsApp (11 dígitos): ")),
-        "4": ("EMAIL", lambda: pedir_mail("\nIngrese el nuevo e-mail:")),
+        "1": ("APELLIDO", lambda: input("\nIngresá el nuevo apellido: ").strip()),
+        "2": ("NOMBRE", lambda: input("\nIngresá el nuevo nombre: ").strip()),
+        "3": ("TELEFONO", lambda: pedir_telefono("\nIngresá el nuevo número de WhatsApp (11 dígitos): ")),
+        "4": ("EMAIL", lambda: pedir_mail("\nIngresá el nuevo e-mail:")),
         "5": ("BOOKING", lambda: pedir_confirmacion("\n¿Es una reserva de Booking? si/no ")),
-        "6": ("CHECKIN", lambda: pedir_fecha_valida("\nIngrese la fecha de checkin (DD-MM-YYYY): ", allow_past=True)),
-        "7": ("CHECKOUT", lambda: pedir_fecha_valida("\nIngrese la nueva fecha de checkout (DD-MM-YYYY): ")),
-        "8": ("DOCUMENTO", lambda: input("\nIngrese el nuevo documento: ").strip()),
-        "9": ("NACIMIENTO", lambda: pedir_entero("\nIngrese el año de nacimiento: ", minimo=1900, maximo=2100)),
-        "10": ("HABITACION", lambda: pedir_entero("\nIngrese la nueva habitación: ", minimo=1, maximo=7)),
-        "11": ("CONTINGENTE", lambda: pedir_entero("\nIngrese la cantidad de huéspedes: ", minimo=1))
+        "6": ("CHECKIN", lambda: pedir_fecha_valida("\nIngresá la fecha de checkin (DD-MM-YYYY): ", allow_past=True)),
+        "7": ("CHECKOUT", lambda: pedir_fecha_valida("\nIngresá la nueva fecha de checkout (DD-MM-YYYY): ")),
+        "8": ("DOCUMENTO", lambda: input("\nIngresá el nuevo documento: ").strip()),
+        "9": ("HABITACION", lambda: pedir_entero("\nIngresá la nueva habitación: ", minimo=1, maximo=7)),
+        "10": ("CONTINGENTE", lambda: pedir_entero("\nIngresá la cantidad de huéspedes: ", minimo=1))
     }
     
     while True:
         opcion = input(
-            "\n¿Qué desea editar? Ingrese:\n"
+            "\n¿Qué querés editar? Ingresá:\n"
             "(1) Apellido,    (2) Nombre,      (3) Teléfono,\n"
             "(4) Email,       (5) Booking,     (6) Checkin,\n"
-            "(7) Checkout,    (8) Documento,   (9) Nacimiento,\n"
-            "(10)Habitación,  (11)Contingente,\n"
-            "ó ingrese (0) para cancelar\n"
+            "(7) Checkout,    (8) Documento,   (9) Habitación,\n"
+            "(10)Contingente, ó ingrese (0) para cancelar\n"
         ).strip()
         if opcion == "0":
             print("Edición cancelada.")
@@ -753,19 +711,16 @@ def editar_huesped():
 
 @usuarios.requiere_acceso(2)
 def eliminar_huesped():
+    leyenda = "\nIngresá el número del huésped a eliminar, (*) para buscar ó (0) para cancelar: "
     while True:
-        numero = input("\nIngrese el número del huésped a eliminar, (*) para buscar ó (0) para cancelar: ").strip()
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
         if numero == "*":
             buscar_huesped()
             continue
-        if numero == "0":
+        if numero == 0:
             print("\n❌ Eliminación cancelada.")
             return
-        if not numero.isdigit():
-            print("\n⚠️  Número inválido. Intente nuevamente.")
-            continue
 
-        numero = int(numero)
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
         if huesped is None:
             print("\n⚠️Huésped no encontrado.")
@@ -773,22 +728,21 @@ def eliminar_huesped():
 
         imprimir_huesped(huesped)
 
-        confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que desea eliminar este huésped? (si/no): ")
+        confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que querés eliminar este huésped? (si/no): ")
         if confirmacion == "si":
             try:
                 db.ejecutar("DELETE FROM HUESPEDES WHERE NUMERO = ?", (numero,))
                 marca_tiempo = marca_de_tiempo()
                 log = (
                     f"[{marca_tiempo}] HUÉSPED ELIMINADO:\n"
-                    f"NUMERO: {huesped['NUMERO']} | "
-                    f"Apellido: {huesped['APELLIDO']} | Nombre: {huesped['NOMBRE']} | "
-                    f"Teléfono: {huesped['TELEFONO']} | Email: {huesped['EMAIL']} | "
-                    f"Booking: {huesped['BOOKING']} | Estado: {huesped['ESTADO']} | "
-                    f"Checkin: {huesped['CHECKIN']} | Checkout: {huesped['CHECKOUT']} | "
-                    f"Documento: {huesped['DOCUMENTO']} | Nacimiento: {huesped['NACIMIENTO']} | "
-                    f"Habitación: {huesped['HABITACION']} | Contingente: {huesped['CONTINGENTE']} | "
-                    f"Registro: {huesped['REGISTRO']}\n"
-                    f"Acción realizada por: {usuarios.sesion.usuario}"
+                    f"| NUMERO: {huesped['NUMERO']} | Apellido: {huesped['APELLIDO']} | "
+                    f"| Nombre: {huesped['NOMBRE']} | Teléfono: {huesped['TELEFONO']} | "
+                    f"| Email: {huesped['EMAIL']} | Booking: {huesped['BOOKING']} | "
+                    f"| Estado: {huesped['ESTADO']} | Checkin: {huesped['CHECKIN']} | "
+                    f"| Checkout: {huesped['CHECKOUT']} | Documento: {huesped['DOCUMENTO']} | "
+                    f"| Habitación: {huesped['HABITACION']} | Contingente: {huesped['CONTINGENTE']} | "
+                    f"| Registro: {huesped['REGISTRO']}\n"
+                    f"| Acción realizada por: {usuarios.sesion.usuario}"
                 )
                 registrar_log("huespedes_eliminados.log", log)
                 print("\n✔ Huésped eliminado.")
@@ -803,24 +757,23 @@ def eliminar_huesped():
 
 @usuarios.requiere_acceso(2)
 def ver_registro():
+    leyenda = "Ingresá el número de huésped para ver su historial, (*) para buscar ó (0) para cancelar: "
     while True:
-        numero = input("Ingrese el número de huésped para ver su historial, (*) para buscar ó (0) para cancelar: ").strip()
-        if numero == "0":
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
+        if numero == 0:
             return
         if numero == "*":
             buscar_huesped()
             continue
-        if not numero.isdigit():
-            print("\n⚠️Número inválido.")
-            continue
-
-        numero = int(numero)
+        
         huesped = db.obtener_uno("SELECT NOMBRE, APELLIDO, REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
         if huesped is None:
             print("\n❌ Huésped no encontrado.")
             continue
 
-        nombre, apellido, registro = huesped
+        nombre = huesped["NOMBRE"]
+        apellido = huesped["APELLIDO"]
+        registro = huesped["REGISTRO"]
         print(f"\nHistorial del huésped {nombre} {apellido}:\n")
 
         if not registro:

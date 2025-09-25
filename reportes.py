@@ -2,7 +2,7 @@ import os
 import usuarios
 from datetime import datetime, date, timedelta
 from db import db
-from utiles import HABITACIONES,pedir_confirmacion, imprimir_huespedes
+from utiles import HABITACIONES,pedir_confirmacion, imprimir_huespedes, opcion_menu
 
 @usuarios.requiere_acceso(1)
 def reporte_diario():
@@ -19,7 +19,13 @@ def reporte_diario():
     print(f"\nConsumos registrados hoy ({date.today().strftime('%d-%m-%Y')}):")
 
     habitacion_actual = None
-    for habitacion, nombre, apellido, fecha, producto, cantidad in consumos:
+    for consumo in consumos:
+        habitacion = consumo["HABITACION"]
+        nombre = consumo["NOMBRE"]
+        apellido = consumo["APELLIDO"]
+        fecha = consumo["FECHA"]
+        producto = consumo["PRODUCTO"]
+        cantidad = consumo["CANTIDAD"]
         if habitacion != habitacion_actual:
             habitacion_actual = habitacion
             print(f"\nHabitación {habitacion} - Huésped: {nombre} {apellido}")
@@ -57,7 +63,7 @@ def reporte_abiertos():
 @usuarios.requiere_acceso(1)
 def reporte_cerrados():
     while True:
-        fecha_str = input("\nIngrese una fecha para generar el reporte, o deje vacío para el día de la fecha: ")
+        fecha_str = input("\nIngresá una fecha para generar el reporte, o deje vacío para el día de la fecha: ")
         if fecha_str:
             try:
                 fecha = datetime.strptime(fecha_str, "%d-%m-%Y").date()
@@ -192,14 +198,12 @@ def reporte_ocupacion():
 
 @usuarios.requiere_acceso(2)
 def ver_logs():
+    leyenda = "\n¿Qué log querés ver?\n1. Consumos de cortesía\n2. Consumos eliminados\n3. Huéspedes cerrados\n4. Huéspedes eliminados\n5. Productos editados \nó 0. Cancelar"
+    logs = {1: "consumos_cortesia.log", 2: "consumos_eliminados.log", 3: "huespedes_cerrados.log", 4:  "huespedes_eliminados.log", 5: "productos_editados.log"}
     while True:
-        logs = {"1": "huespedes_eliminados.log", "2": "huespedes_cerrados.log", "3": "consumos_eliminados.log"}
-        print("\n¿Qué log quiere ver?\n1. Huéspedes eliminados\n2. Huéspedes cerrados\n3. Consumos eliminados\n0. Cancelar")
-        opcion = input("\nSeleccione una opción: ").strip()
-        if opcion == "0":
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
+        if opcion == 0:
             return
-        elif opcion not in logs:
-            print("❌ Opción inválida.")
         elif opcion in logs:
             path = os.path.join("logs", logs[opcion])
             if os.path.exists(path):

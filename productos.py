@@ -3,21 +3,17 @@ import sqlite3
 import usuarios
 from db import db
 from unidecode import unidecode
-from utiles import pedir_precio, pedir_entero, pedir_confirmacion, imprimir_productos, imprimir_producto, marca_de_tiempo, registrar_log
+from utiles import pedir_precio, pedir_entero, pedir_confirmacion, imprimir_productos, imprimir_producto, marca_de_tiempo, registrar_log, opcion_menu
 
 @usuarios.requiere_acceso(1)
 def nuevo_producto():
+    leyenda = "\nIngresá el código de producto, deje vacio para autogenerar, ó (0) para cancelar : "
     while True:
-        respuesta_codigo = input("\nIngrese el código de producto, deje vacio para autogenerar, ó (0) para cancelar : ")
+        respuesta_codigo = opcion_menu(leyenda, cero=True, vacio=True, minimo=1)
         try:
-            if respuesta_codigo == "0":
+            if respuesta_codigo == 0:
                 return
-            if respuesta_codigo:
-                if not respuesta_codigo.isdigit():
-                    print("\n⚠️  El código debe ser un número positivo.")
-                    continue
-                codigo = int(respuesta_codigo)
-            else:
+            if not respuesta_codigo:
                 ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
                 codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
             break # Exit the loop after finding a valid code
@@ -40,9 +36,9 @@ def nuevo_producto():
             continue
         break
         
-    precio = pedir_precio("Ingrese el precio del producto: ")
-    stock = pedir_entero("Ingrese el stock inicial: (-1 = infinito): ", minimo = -1)
-    alerta = pedir_entero("Ingrese el nivel de alerta de stock ó deje vacío para usar el valor por defecto (5): ", minimo=1, defecto=5)
+    precio = pedir_precio("Ingresá el precio del producto: ")
+    stock = pedir_entero("Ingresá el stock inicial: (-1 = infinito): ", minimo = -1)
+    alerta = pedir_entero("Ingresá el nivel de alerta de stock ó deje vacío para usar el valor por defecto (5): ", minimo=1, defecto=5)
     respuesta_pago_inmediato = pedir_confirmacion("¿El producto se debe pagar en el momento? (si/no): ", defecto="no")
     pago_inmediato = 0 if respuesta_pago_inmediato != "si" else 1
     
@@ -61,18 +57,17 @@ def nuevo_producto():
 
 @usuarios.requiere_acceso(0)
 def listado_productos():
+    leyenda = "\n¿Cómo querés ordenar los productos? Por código (1), por nombre (2) ó cancelar (0): "
     while True:
-        opcion = input("\n¿Cómo desea ordenar los productos? Por código (1), por nombre (2) ó cancelar (0): ").strip()
-        if opcion == "0":
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=2)
+        if opcion == 0:
             return
-        elif opcion == "1":
+        elif opcion == 1:
             orden = "CODIGO"
             break
-        elif opcion == "2":
+        elif opcion == 2:
             orden = "NOMBRE"
             break
-        else:
-            print("\n⚠️  Opción inválida. Intente nuevamente.")
         
     try:
         productos = db.obtener_todos(f"SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS ORDER BY {orden}")
@@ -89,7 +84,7 @@ def listado_productos():
 @usuarios.requiere_acceso(0)
 def buscar_producto_b():
     while True:
-        criterio = input("\nIngrese el nombre o código del producto, (*) para ver todos, ó (0) para cancelar: ").strip()
+        criterio = input("\nIngresá el nombre o código del producto, (*) para ver todos, ó (0) para cancelar: ").strip()
         if not criterio:
             print("\n⚠️  Debe ingresar al menos un número o una palabra para buscar.")
             continue
@@ -232,18 +227,16 @@ def actualizar_producto_db(database, codigo, campo, valor):
 
 @usuarios.requiere_acceso(2)
 def editar_producto():
+    leyenda_cod = "\nIngresá el código del producto que querés editar, ingrese (*) para ver el listado ó ingrese (0) para cancelar: "
     while True:
-        codigo = input("\nIngrese el código del producto que desea editar, ingrese (*) para ver el listado ó ingrese (0) para cancelar: ").strip()
-        if codigo == "*":
+        respuesta_cod = opcion_menu(leyenda_cod, cero=True, asterisco=True, minimo=1)
+        if respuesta_cod == "*":
             listado_productos()
             continue
-        if codigo == "0":
+        if respuesta_cod == 0:
             return
-        if not codigo.isdigit():
-            print("\n❌ Código inválido.")
-            continue
 
-        codigo_original = int(codigo)
+        codigo_original = respuesta_cod
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo_original,))
         if not producto:
             print("\n⚠️  Producto no encontrado.")
@@ -259,26 +252,26 @@ def editar_producto():
         imprimir_producto(producto)
         break
 
+    leyenda_campo = "\n¿Querés editar el código (1), nombre (2), el precio (3), stock (4), alerta de stock (5) ó cancelar (0)? "
     while True:
-        opcion = input("\n¿Desea editar el código (1), nombre (2), el precio (3), stock (4), alerta de stock (5) ó cancelar (0)? ").strip()
-        if opcion == "0":
+        opcion = opcion_menu(leyenda_campo, cero=True, minimo=1, maximo=5)
+        if opcion == 0:
             return
-        if opcion == "1":
+        if opcion == 1:
+            leyenda_campo = "\nIngresá el nuevo código del producto (deje vacío para autogenerar): "
             while True:
-                respuesta_codigo = input("\nIngrese el nuevo código del producto (deje vacío para autogenerar): ").strip()
-                if respuesta_codigo:
-                    if not respuesta_codigo.isdigit():
-                        print("\n⚠️  El código debe ser un número positivo.")
-                        continue
-                    nuevo_codigo = int(respuesta_codigo)
-                    if nuevo_codigo != codigo_original:
+                nuevo_codigo = opcion_menu(leyenda_campo, vacio=True, minimo=1)
+                if nuevo_codigo: # Si hay un código
+                    if nuevo_codigo != codigo_original: # Y es distinto al original
                         existe = db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (nuevo_codigo,))
+                        #Y existe
                         if existe:
                             print(f"\n⚠️  El código {nuevo_codigo} ya está en uso. Elija otro.")
                             continue
+                    # Si es distinto al original y no existe
                     codigo = nuevo_codigo
                     break
-                else:
+                else: #Si no hay código
                     ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
                     nuevo_codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
                     while db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (nuevo_codigo,)):
@@ -302,9 +295,9 @@ def editar_producto():
             except Exception as e:
                 print(f"\n❌ Error al actualizar el código: {e}")
             return
-        if opcion == "2":
+        if opcion == 2:
             while True:
-                respuesta_nombre = input("Ingrese el nuevo nombre: ").strip()
+                respuesta_nombre = input("Ingresá el nuevo nombre: ").strip()
                 if len(respuesta_nombre) < 1:
                     print("\n⚠️  El nombre no puede estar vacío.")
                     continue
@@ -331,8 +324,8 @@ def editar_producto():
                 except Exception as e:
                     print(f"\n❌ Error al actualizar el nombre: {e}")
                 return
-        elif opcion == "3":
-            respuesta_precio = pedir_precio("Ingrese el nuevo precio: ")
+        elif opcion == 3:
+            respuesta_precio = pedir_precio("Ingresá el nuevo precio: ")
             try:
                 actualizar_producto_db(db, codigo, "PRECIO", respuesta_precio)
                 marca_tiempo = marca_de_tiempo()
@@ -350,11 +343,11 @@ def editar_producto():
             except Exception as e:
                 print(f"❌ Error al actualizar el precio: {e}")
             return
-        elif opcion == "4":
+        elif opcion == 4:
             if pedir_confirmacion("¿Desea stock infinito? si/no: ") == "si":
                 stock = -1
             else:
-                stock = pedir_entero("Ingrese el nuevo stock: ", minimo=0)
+                stock = pedir_entero("Ingresá el nuevo stock: ", minimo=0)
             try:
                 actualizar_producto_db(db, codigo, "STOCK", stock)
                 marca_tiempo = marca_de_tiempo()
@@ -374,9 +367,9 @@ def editar_producto():
             except Exception as e:
                 print(f"\n❌ Error al actualizar el stock: {e}")
             return
-        elif opcion == "5":
+        elif opcion == 5:
             while True:
-                alerta = pedir_entero("Ingrese el nuevo nivel de alerta de stock: ", minimo=1)
+                alerta = pedir_entero("Ingresá el nuevo nivel de alerta de stock: ", minimo=1)
                 try:
                     actualizar_producto_db(db, codigo, "ALERTA", alerta)
                     marca_tiempo = marca_de_tiempo()
@@ -399,22 +392,17 @@ def editar_producto():
 
 @usuarios.requiere_acceso(2)
 def eliminar_producto():
+    leyenda = "\nIngresá el código del producto que querés eliminar, ingrese (*) para ver el listado ó ingrese (0) para cancelar: "
     while True:
-        codigo = input("\nIngrese el código del producto que desea eliminar, ingrese (*) para ver el listado ó ingrese (0) para cancelar: ").strip()
+        codigo = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
         if codigo == "*":
             listado_productos()
             continue
-        if codigo == "0":
+        if codigo == 0:
             print("\n❌ Eliminación cancelada.")
             return
         
         try:
-            if not codigo.isdigit():
-                print("\n⚠️  Código inválido.")
-                continue
-
-            codigo = int(codigo)
-
             producto = db.obtener_uno("SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
             if not producto:
                 print("\n⚠️  Producto no encontrado.")
@@ -423,7 +411,7 @@ def eliminar_producto():
             print("Producto seleccionado: ")
             imprimir_producto(producto)
 
-            confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que desea eliminar este producto? (si/no): ")
+            confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que querés eliminar este producto? (si/no): ")
             if confirmacion == "si":
                 try:
                     db.ejecutar("DELETE FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))

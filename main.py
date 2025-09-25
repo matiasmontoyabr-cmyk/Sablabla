@@ -1,9 +1,15 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
 
+#creo que editar_usuario() y eliminar_usuario() no verifican si el usuario existe
+
+#Revisar errores por acceso posicional
+
+#Hacer función pedir_nombre()
+
 #Muestreo de coretsías en generar_reportes, con opción diario, semanal, mensual, histórico. Requiere mínimo lvl 2.
 
-#Crear en utiles.py una función que pida una opción numérica, y como parámetros tome un mensaje, permitir_cero defuault True, permitir_vacio default False, Mínimo default None, máximo default None).
+#Aplicar opcion_menu()
 
 #Estructurar Logs en JSON para facilitar su lectura y análisis
 #Verificar el muestreo de registros para que no se muestren todos los registros de una vez
@@ -67,8 +73,8 @@ def productos_existe():
 def huespedes_existe():
     try:
         db.ejecutar('''CREATE TABLE IF NOT EXISTS HUESPEDES(NUMERO INTEGER PRIMARY KEY AUTOINCREMENT,
-                    APELLIDO TEXT, NOMBRE TEXT, TELEFONO INTEGER, EMAIL TEXT, BOOKING TEXT, ESTADO TEXT,
-                    CHECKIN TEXT, CHECKOUT TEXT, DOCUMENTO TEXT, NACIMIENTO INTEGER, HABITACION INTEGER,
+                    APELLIDO TEXT, NOMBRE TEXT, TELEFONO INTEGER, EMAIL TEXT, APP TEXT, ESTADO TEXT,
+                    CHECKIN TEXT, CHECKOUT TEXT, DOCUMENTO TEXT, HABITACION INTEGER,
                     CONTINGENTE INTEGER, REGISTRO TEXT)''')
     except Exception as e:
         print(f"❌ Error al crear la tabla HUESPEDES: {e}")
@@ -99,11 +105,11 @@ def cortesias_existe():
         print(f"❌ Error al crear la tabla CORTESIAS: {e}")
 
 def inicio():
-    mensaje = "\n¿Qué desea hacer?:\n1. 🧘 Gestion de huéspedes\n2. 📋 Gestion de consumos\n3. 🛍️ Gestion de productos\n4. 📦 Gestion de inventario\n5. 📈 Gestion de reportes\n6. 👤 Gestion de usuarios\n0. ❌ Cerrar\n"
+    leyenda = "\n¿Qué querés hacer?:\n1. 🧘 Gestion de huéspedes\n2. 📋 Gestion de consumos\n3. 🛍️ Gestion de productos\n4. 📦 Gestion de inventario\n5. 📈 Gestion de reportes\n6. 👤 Gestion de usuarios\n0. ❌ Cerrar\n"
     while True:
-        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=6)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=6)
         if respuesta == 0:
-            respuesta_cierre = pedir_confirmacion("¿Está seguro de que desea cerrar el programa? (si/no): ")
+            respuesta_cierre = pedir_confirmacion("¿Está seguro de que querés cerrar el programa? (si/no): ")
             if respuesta_cierre != "si":
                 print("\n⮐ Volviendo al menú principal...")
                 continue
@@ -123,9 +129,9 @@ def inicio():
             gestionar_usuarios()
 
 def gestionar_huespedes():
-    mensaje = "\n1. ➕ Registrar nuevo huesped\n2. ⁐ Cerrar habitación\n3. 🔍 Buscar un huesped\n4. ⭾ Cambiar el estado de un huesped\n5. ✏️ Editar huesped\n6. ️️🗑️ Eliminar un huesped\n7. ㏒ Ver registro\n0. ⮐ Volver al inicio\n"
+    leyenda = "\n1. ➕ Registrar nuevo huesped\n2. ⁐ Cerrar habitación\n3. 🔍 Buscar un huesped\n4. ⭾ Cambiar el estado de un huesped\n5. ✏️ Editar huesped\n6. ️️🗑️ Eliminar un huesped\n7. ㏒ Ver registro\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=7)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
         if respuesta == 1:
             nuevo_huesped()
         elif respuesta == 2:
@@ -144,9 +150,9 @@ def gestionar_huespedes():
             return
 
 def gestionar_consumos():
-    mensaje = "\n1. ➕ Agregar consumo\n2. 🔍 Ver consumos\n3. ️️🗑️ Eliminar consumos\n4. 💸 Registrar pago\n5. 🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n"
+    leyenda = "\n1. ➕ Agregar consumo\n2. 🔍 Ver consumos\n3. ️️🗑️ Eliminar consumos\n4. 💸 Registrar pago\n5. 🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=5)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if respuesta == 1:
             agregar_consumo()
         elif respuesta == 2:
@@ -161,9 +167,9 @@ def gestionar_consumos():
             return
 
 def gestionar_productos():
-    mensaje = "\n1. ➕ Agregar producto\n2. 🔍 Buscar productos\n3. 📋 Listado de productos\n4. ✏️  Editar producto\n5. ️️🗑️  Eliminar producto\n0. ⮐ Volver al inicio\n"
+    leyenda = "\n1. ➕ Agregar producto\n2. 🔍 Buscar productos\n3. 📋 Listado de productos\n4. ✏️  Editar producto\n5. ️️🗑️  Eliminar producto\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=5)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if respuesta == 1:
             nuevo_producto()
         elif respuesta == 2:
@@ -178,9 +184,9 @@ def gestionar_productos():
             return
 
 def gestionar_inventario():
-    mensaje = "\n1. 📦 Abrir inventario\n2. ➕ Ingresar compra\n3. ✏️ Editar inventario\n0. ⮐ Volver al inicio\n"
+    leyenda = "\n1. 📦 Abrir inventario\n2. ➕ Ingresar compra\n3. ✏️ Editar inventario\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=3)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=3)
         if respuesta == 1:
             abrir_inventario()
         elif respuesta == 2:
@@ -191,9 +197,9 @@ def gestionar_inventario():
             return
 
 def gestionar_reportes():
-    mensaje = "\n1. 📋 Generar reporte de consumos diarios\n2. 🧘 Generar reporte de pasajeros abiertos\n3. ⁐ Generar reporte de pasajeros cerrados\n4. 📆 Generar reporte de pronto checkin\n5. 📦 Generar reporte de inventario\n6. 📅 Generar reporte de ocupación\n7. ㏒ Ver logs\n0. ⮐ Volver al inicio\n"
+    leyenda = "\n1. 📋 Generar reporte de consumos diarios\n2. 🧘 Generar reporte de pasajeros abiertos\n3. ⁐ Generar reporte de pasajeros cerrados\n4. 📆 Generar reporte de pronto checkin\n5. 📦 Generar reporte de inventario\n6. 📅 Generar reporte de ocupación\n7. ㏒ Ver logs\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=7)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
         if respuesta == 1:
             reporte_diario()
         elif respuesta == 2:
@@ -213,9 +219,9 @@ def gestionar_reportes():
 
 def gestionar_usuarios():
     print("\n--- 👤Menú de Gestión de Usuarios ---")
-    mensaje = "1. ➕ Crear nuevo usuario\n2. ✏️ Editar usuario\n3. 🗑️ Eliminar usuario\n4. 👥 Mostrar usuarios\n5. ␎ Cerrar sesión\n0. ⮐ Volver al menú principal\n"
+    leyenda = "1. ➕ Crear nuevo usuario\n2. ✏️ Editar usuario\n3. 🗑️ Eliminar usuario\n4. 👥 Mostrar usuarios\n5. ␎ Cerrar sesión\n0. ⮐ Volver al menú principal\n"
     while True:
-        respuesta = opcion_menu(mensaje, cero=True, minimo=1, maximo=5)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if respuesta == 1:
             crear_usuario()
         elif respuesta == 2:

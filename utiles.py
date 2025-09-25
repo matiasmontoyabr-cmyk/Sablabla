@@ -92,7 +92,7 @@ def pedir_fecha_valida(mensaje, allow_past=False):
                 dia, mes, anio = map(int, partes)
                 fecha = date(anio, mes, dia)
             except ValueError as e:
-                print(f"\n❌ Formato de fecha inválido o fecha no existente: {e}. Ingrese una fecha como 07-05-2025 o 07052025.")
+                print(f"\n❌ Formato de fecha inválido o fecha no existente: {e}. Ingresá una fecha como 07-05-2025 o 07052025.")
                 continue
             except Exception as e:
                 print(f"\n❌ Ocurrió un error inesperado al procesar la fecha: {e}. Intente de nuevo.")
@@ -111,7 +111,7 @@ def pedir_fecha_valida(mensaje, allow_past=False):
             else:
                 return fecha.isoformat()
         else:
-            print("❌No se pudo interpretar la fecha. Ingrese una fecha como 07-05-2025 o 07052025.")
+            print("❌No se pudo interpretar la fecha. Ingresá una fecha como 07-05-2025 o 07052025.")
             continue
 
 def formatear_fecha(fecha_iso):
@@ -137,7 +137,7 @@ def formatear_fecha(fecha_iso):
 def marca_de_tiempo():
     return datetime.now().strftime("%d-%m-%Y %H:%M")
 
-def opcion_menu(mensaje, cero=False, vacio=False, minimo=None, maximo=None):
+def opcion_menu(leyenda, cero=False, vacio=False, asterisco=False, minimo=None, maximo=None):
     # Solicita una opción numérica al usuario, validando contra una serie de reglas.
     # Retorna el entero validado, 0 si se permite y elige cancelar, o None si se permite vacío.
 
@@ -160,14 +160,21 @@ def opcion_menu(mensaje, cero=False, vacio=False, minimo=None, maximo=None):
                 print("\n⚠️ '0' no es una opción valida.")
                 continue
 
-        # 3. Intentar convertir a número entero
+        if entrada = "*":
+            if asterisco:
+                return "*"
+            else:
+                print("\n⚠️ Asterisco no es una opción válida aquí.")
+                continue
+
+        # 4. Intentar convertir a número entero
         try:
             opcion = int(entrada)
         except ValueError:
             print("\n⚠️  La opción debe ser un número: ")
             continue
             
-        # 4. Validar contra el rango (Mínimo/Máximo)
+        # 5. Validar contra el rango (Mínimo/Máximo)
         if minimo is not None and opcion < minimo:
             print(f"\n⚠️  Opción inválida, debe ser igual o mayor que {minimo}.")
             continue
@@ -176,7 +183,7 @@ def opcion_menu(mensaje, cero=False, vacio=False, minimo=None, maximo=None):
             print(f"\n⚠️  Opción inválida, debe ser igual o menor que {maximo}.")
             continue
 
-        # 5. Éxito
+        # 6. Éxito
         return opcion
 
 def pedir_entero(mensaje, minimo=None, maximo=None, defecto=None):
@@ -197,7 +204,7 @@ def pedir_entero(mensaje, minimo=None, maximo=None, defecto=None):
             continue
         return valor
 
-def pedir_telefono(mensaje="Ingrese un número de WhatsApp (11 dígitos mínimo): "):
+def pedir_telefono(mensaje="Ingresá un número de WhatsApp (11 dígitos mínimo): "):
     while True:
         respuesta_telefono = input(mensaje).strip()
         solo_digitos = re.sub(r"\D", "", respuesta_telefono)  # Elimina todo lo que no sea número
@@ -223,14 +230,14 @@ def pedir_confirmacion(mensaje="¿Confirma? (si/no): ", defecto=None):
         else:
             print("⚠️  Escriba 'si' o 'no'.")
 
-def pedir_mail(mensaje="Ingrese el e-mail de contacto: "):
+def pedir_mail(mensaje="Ingresá el e-mail de contacto: "):
     while True:
         email = input(mensaje).strip()
         if re.match(r"[^@]+@[^@]+\.[^@]+", email):
             return email
         print("\n❌ Correo electrónico inválido, intente nuevamente.")
 
-def pedir_precio(mensaje="Ingrese el precio: "):
+def pedir_precio(mensaje="Ingresá el precio: "):
     while True:
         entrada = input(mensaje).strip()
 
@@ -252,7 +259,7 @@ def pedir_precio(mensaje="Ingrese el precio: "):
             return round(precio, 2)
 
         except ValueError:
-            print("\n❌ Ingrese un número válido (ej: 1499.90).")
+            print("\n❌ Ingresá un número válido (ej: 1499.90).")
 
 def pedir_habitación(checkin, checkout, contingente, excluir_numero=None):
     while True:

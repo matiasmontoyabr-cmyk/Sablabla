@@ -1,6 +1,6 @@
 import usuarios
 from db import db
-from utiles import imprimir_productos, pedir_entero, registrar_log, marca_de_tiempo
+from utiles import imprimir_productos, pedir_entero, registrar_log, marca_de_tiempo, opcion_menu
 
 @usuarios.requiere_acceso(1)
 def abrir_inventario():
@@ -12,7 +12,10 @@ def abrir_inventario():
     print("\n📦 Inventario actual:")
     print(f"{'CÓDIGO':<7} {'NOMBRE':<30} {'STOCK':<10}")
     print("-" * 50)
-    for codigo, nombre, stock in productos:
+    for producto in productos:
+        codigo = producto["CODIGO"]
+        nombre = producto["NOMBRE"]
+        stock = producto["STOCK"]
         print(f"{codigo:<7} {nombre:<30} {stock:<10}")
     
     return
@@ -26,15 +29,12 @@ def ingresar_compra():
 
     imprimir_productos(productos)
 
+    leyenda = "\nIngresá el CÓDIGO del producto comprado ó (0) para cancelar: "
     while True:
-        codigo = input("\nIngrese el CÓDIGO del producto comprado ó (0) para cancelar: ").strip()
-        if codigo == "0":
+        codigo = opcion_menu(leyenda, cero=True, minimo=1,)
+        if codigo == 0:
             return
-        if not codigo.isdigit():
-            print("\n⚠️  Código inválido.")
-            continue
-
-        codigo = int(codigo)
+        
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
         if not producto:
             print("\n❌ Producto no encontrado.")
@@ -42,7 +42,7 @@ def ingresar_compra():
 
         nombre = producto["NOMBRE"]
         stock  = producto["STOCK"]
-        cantidad = pedir_entero(f"Ingrese la cantidad comprada de '{nombre}': ", minimo=1)
+        cantidad = pedir_entero(f"Ingresá la cantidad comprada de '{nombre}': ", minimo=1)
         nuevo_stock = stock + cantidad
         try:
             db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
@@ -71,22 +71,19 @@ def editar_inventario():
 
     imprimir_productos(productos)
 
+    leyenda = "\nIngresá el CÓDIGO del producto a modificar ó (0) para cancelar: "
     while True:
-        codigo = input("\nIngrese el CÓDIGO del producto a modificar ó (0) para cancelar: ").strip()
-        if codigo == "0":
+        codigo = opcion_menu(leyenda, cero=True, minimo=1,)
+        if codigo == 0:
             return
-        if not codigo.isdigit():
-            print("\n⚠️  Código inválido.")
-            continue
 
-        codigo = int(codigo)
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
         if not producto:
             print("\n⚠️  Producto no encontrado.")
             continue
 
         nombre = producto["NOMBRE"]
-        nuevo_stock = pedir_entero(f"Ingrese el nuevo stock de '{nombre}': ", minimo=0)
+        nuevo_stock = pedir_entero(f"Ingresá el nuevo stock de '{nombre}': ", minimo=0)
         try:
             db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
             marca_tiempo = marca_de_tiempo()

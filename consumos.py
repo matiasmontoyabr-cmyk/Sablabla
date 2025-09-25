@@ -4,22 +4,19 @@ from datetime import datetime
 from db import db
 from huespedes import buscar_huesped, editar_huesped_db
 from unidecode import unidecode
-from utiles import registrar_log, imprimir_huesped, pedir_entero, pedir_confirmacion, imprimir_productos, formatear_fecha, marca_de_tiempo
+from utiles import registrar_log, imprimir_huesped, pedir_entero, pedir_confirmacion, imprimir_productos, formatear_fecha, marca_de_tiempo, opcion_menu
 
 @usuarios.requiere_acceso(1)
 def agregar_consumo():
+    leyenda_hab = "\nIngresá el número de habitación para agregar un consumo, (*) para buscar ó (0) para cancelar: "
     while True:
-        habitacion = input("\nIngrese el número de habitación para agregar un consumo, (*) para buscar ó (0) para cancelar: ").strip()
-        if habitacion == "0":
+        respuesta = opcion_menu(leyenda_hab, cero=True, asterisco=True, minimo=1, maximo=7)
+        if respuesta == 0:
             return
-        if habitacion == "*":
+        if respuesta == "*":
             buscar_huesped()
             continue
-        if not habitacion.isdigit():
-            print("\n⚠️  Número inválido.")
-            continue
-
-        habitacion = int(habitacion)
+        habitacion = respuesta
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", (habitacion,))
         if huesped is None:
             print("\n❌ No se encontró un huésped ABIERTO en esa habitación.")
@@ -34,8 +31,9 @@ def agregar_consumo():
     consumos_agregados = []
 
     while True:
-        codigo = input("\nIngrese el código del producto consumido, (*) para buscar ó (0) para finalizar: ").strip()
-        if codigo == "0":
+        leyenda_cod = "\nIngresá el código del producto consumido, (*) para buscar ó (0) para finalizar: "
+        codigo = opcion_menu(leyenda_cod, cero=True, asterisco=True, minimo=1)
+        if codigo == 0:
             break
         elif codigo == "*":
             productos = db.obtener_todos("SELECT * FROM PRODUCTOS WHERE STOCK > 0 OR STOCK = -1")
@@ -45,21 +43,19 @@ def agregar_consumo():
             else:
                 imprimir_productos(productos)
                 continue
-        elif not codigo.isdigit():
-            print("\n⚠️  Código inválido")
-            continue
 
-        codigo = int(codigo)
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
         if not producto:
             print("\n❌ Producto no encontrado.")
             continue
 
-        _, nombre, _, stock, pinmediato = producto
+        nombre = producto["NOMBRE"]
+        stock = producto["STOCK"]
+        pinmediato = producto["PINMEDIATO"]
         print(f"Producto seleccionado: {nombre.capitalize()} (Stock: {'Infinito' if stock == -1 else stock})")
 
         while True:
-            cantidad = pedir_entero("Ingrese la cantidad consumida ó (0) para cancelar: ", minimo=0)
+            cantidad = pedir_entero("Ingresá la cantidad consumida ó (0) para cancelar: ", minimo=0)
             if cantidad == 0:
                 print("\n❌ Producto cancelado.")
                 break
@@ -69,7 +65,7 @@ def agregar_consumo():
             else:
                 pagado = 0
                 if pinmediato == 1:
-                    if pedir_confirmacion(f"\n⚠️  '{nombre}' debería ser pagado en el momento. ¿Desea registrarlo como pagado? (si/no): ") == "si":
+                    if pedir_confirmacion(f"\n⚠️  '{nombre}' debería ser pagado en el momento. ¿Querés registrarlo como pagado? (si/no): ") == "si":
                         pagado = 1
                         print("✔ Se registrará el consumo como pagado.")
                     else:
@@ -86,13 +82,13 @@ def agregar_consumo():
                 print(f"\n✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
                 break
     if consumos_agregados:
-        respuesta = pedir_confirmacion("\n¿Desea eliminar alguno de los consumos recién agregados? (si/no): ", defecto="no")
+        respuesta = pedir_confirmacion("\n¿Querés eliminar alguno de los consumos recién agregados? (si/no): ", defecto="no")
         if respuesta == "si":
             print("\nConsumos recién agregados:")
             for i, consumo in enumerate(consumos_agregados):
                 print(f"  {i + 1}. Producto: {consumo['nombre']} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
 
-            a_eliminar_str = input("\nIngrese los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
+            a_eliminar_str = input("\nIngresá los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
             
             if a_eliminar_str != '0':
                 indices_a_eliminar = set()
@@ -148,18 +144,15 @@ def agregar_consumo():
 
 @usuarios.requiere_acceso(0)
 def ver_consumos():
+    leyenda_hab = "\nIngresá el número de habitación para ver sus consumos, (*) para buscar ó (0) para cancelar: "
     while True:
-        habitacion = input("\nIngrese el número de habitación para ver sus consumos, (*) para buscar ó (0) para cancelar: ").strip()
-        if habitacion == "0":
+        habitacion = opcion_menu(leyenda_hab, cero=True, asterisco=True, minimo=1, maximo=7)
+        if habitacion == 0:
             return
         if habitacion == "*":
             buscar_huesped()
             continue
-        if not habitacion.isdigit():
-            print("Número inválido.")
-            continue
 
-        habitacion = int(habitacion)
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ?", (habitacion,))
         if huesped is None:
             print("❌ Habitación no encontrada.")
@@ -176,7 +169,11 @@ def ver_consumos():
 
             grand_total = 0.0 # Inicializar el total general
 
-            for idx, (_, fecha, _, producto_nombre, cantidad, precio) in enumerate(consumos, start=1):
+            for idx, consumo in enumerate(consumos, start=1):
+                fecha = consumo["FECHA"]
+                producto_nombre = consumo["PRODUCTO"]
+                cantidad = consumo["CANTIDAD"]
+                precio = consumo["PRECIO"]
                 fecha_display = formatear_fecha(fecha)
                 item_total = cantidad * precio # Calcular el total por item
                 grand_total += item_total # Acumular al total general
@@ -190,18 +187,15 @@ def ver_consumos():
 
 @usuarios.requiere_acceso(2)
 def eliminar_consumos():
+    leyenda_hab = "\nIngresá el número de habitación para eliminar consumos, (*) para buscar ó (0) para cancelar: "
     while True:
-        habitacion = input("\nIngrese el número de habitación para eliminar consumos, (*) para buscar ó (0) para cancelar: ").strip()
-        if habitacion == "0":
+        habitacion = opcion_menu(leyenda_hab, cero=True, asterisco=True, minimo=1, maximo=7)
+        if habitacion == 0:
             return
         if habitacion == "*":
             buscar_huesped()
             continue
-        if not habitacion.isdigit():
-            print("⚠️  Número inválido.")
-            continue
 
-        habitacion = int(habitacion)
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ?", (habitacion,))
         if huesped is None:
             print("❌ Habitación no encontrada.")
@@ -219,10 +213,15 @@ def eliminar_consumos():
         print(f"\nConsumos de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
         print(f"{'#':<3} {'FECHA':<12} {'PRODUCTO':<30} {'CANTIDAD':<10}")
         print("-" * 60)
-        for idx, (consumo_id, fecha, producto_id, producto_nombre, cantidad) in enumerate(consumos, start=1):
+        for idx, consumo in enumerate(consumos, start=1):
+            consumo_id = consumo["NUMERO"]
+            fecha = consumo["FECHA"]
+            producto_id = consumo["PRODUCTO"]
+            producto_nombre = consumo["PRODUCTO_NOMBRE"]
+            cantidad = consumo["CANTIDAD"]
             print(f"{idx:<3} {formatear_fecha(fecha):<12} {producto_nombre:<30} {cantidad:<10}")
 
-        seleccion = input("\nIngrese el/los número(s) de consumo a eliminar separados por coma (ej: 1,3): ").strip()
+        seleccion = input("\nIngresá el/los número(s) de consumo a eliminar separados por coma (ej: 1,3): ").strip()
         seleccion = seleccion.split(",")
         a_eliminar = []
         for item in seleccion:
@@ -242,7 +241,11 @@ def eliminar_consumos():
         
         try:
             for i in a_eliminar:
-                consumo_id, _, producto_id, producto_nombre, cantidad = consumos[i]
+                consumo_data = consumos[i]
+                consumo_id = consumo_data["ID"]
+                producto_id = consumo_data["PRODUCTO"]
+                producto_nombre = consumo_data["NOMBRE"]
+                cantidad = consumo_data["CANTIDAD"]
 
                 # Restaurar stock si aplica
                 producto = db.obtener_uno("SELECT STOCK FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
@@ -269,18 +272,15 @@ def eliminar_consumos():
 
 @usuarios.requiere_acceso(1)
 def registrar_pago():
+    leyenda_hab = "\nIngresá el número de habitación para registrar el pago, (*) para buscar ó (0) para cancelar: "
     while True:
-        habitacion = input("\nIngrese el número de habitación para registrar el pago, (*) para buscar ó (0) para cancelar: ").strip()
-        if habitacion == "0":
+        habitacion = opcion_menu(leyenda_hab, cero=True, asterisco=True, minimo=1, maximo=7)
+        if habitacion == 0:
             return
         if habitacion == "*":
             buscar_huesped()
             continue
-        if not habitacion.isdigit():
-            print("⚠️  Número inválido.")
-            continue
 
-        habitacion = int(habitacion)
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ?", (habitacion,))
         if not huesped:
             print("❌ Huesped no encontrado en esa habmitación.")
@@ -308,11 +308,16 @@ def registrar_pago():
         print(f"{'#':<3} {'FECHA':<20} {'PRODUCTO':<25} {'CANT':<5} {'TOTAL':>10}")
         print("-" * 70)
 
-        for idx, (cid, fecha, producto, cant, precio) in enumerate(consumos, start=1):
+        for idx, consumo in enumerate(consumos, start=1):
+            cid = consumo["NUMERO"]
+            fecha = consumo["FECHA"]
+            producto = consumo["PRODUCTO"]
+            cant = consumo["CANTIDAD"]
+            precio = consumo["PRECIO"]
             total = cant * precio
             print(f"{idx:<3} {fecha:<20} {producto:<25} {cant:<5} {total:>10.2f}")
 
-        seleccion = input("\nIngrese los números de los consumos a marcar como pagos (ej: 1,3,5), ó (0) para cancelar: ").strip()
+        seleccion = input("\nIngresá los números de los consumos a marcar como pagos separados por coma (ej: 1,3,4), ó (0) para cancelar: ").strip()
         if seleccion == "0":
             print("❌ Operación cancelada.")
             return
@@ -340,9 +345,10 @@ def registrar_pago():
 @usuarios.requiere_acceso(2)
 def consumo_cortesia():
     cortesias_agregadas = []
+    leyenda_cod = "\nIngresá el código del producto consumido, (*) para buscar ó (0) para finalizar: "
     while True:
-        codigo = input("\nIngrese el código del producto consumido, (*) para buscar ó (0) para finalizar: ").strip()
-        if codigo == "0":
+        codigo = opcion_menu(leyenda_cod, cero=True, asterisco=True, minimo=1)
+        if codigo == 0:
             break
         elif codigo == "*":
             productos = db.obtener_todos("SELECT * FROM PRODUCTOS WHERE STOCK > 0 OR STOCK = -1")
@@ -352,11 +358,7 @@ def consumo_cortesia():
             else:
                 imprimir_productos(productos)
                 continue
-        elif not codigo.isdigit():
-            print("\n⚠️  Código inválido")
-            continue
 
-        codigo = int(codigo)
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
         if not producto:
             print("\n⚠️  Producto no encontrado.")
@@ -367,7 +369,7 @@ def consumo_cortesia():
         print(f"\nProducto seleccionado: {nombre} (Stock: {'Infinito' if stock == -1 else stock})")
 
         while True:
-            cantidad = pedir_entero("Ingrese la cantidad ó (0) para cancelar: ", minimo=0)
+            cantidad = pedir_entero("Ingresá la cantidad ó (0) para cancelar: ", minimo=0)
             if cantidad == 0:
                 print("\n❌ Producto cancelado.")
                 break
@@ -384,13 +386,13 @@ def consumo_cortesia():
                 print(f"✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
                 break
     if cortesias_agregadas:
-        respuesta = pedir_confirmacion("\n¿Desea eliminar alguno de las cortesías recién agregadas? (si/no): ")
+        respuesta = pedir_confirmacion("\n¿Querés eliminar alguno de las cortesías recién agregadas? (si/no): ")
         if respuesta == "si":
             print("\nCortesías recién agregadas:")
             for i, cortesia in enumerate(cortesias_agregadas):
                 print(f"  {i + 1}. Producto: {cortesia['nombre']} (Cód: {cortesia['codigo']}), Cantidad: {cortesia['cantidad']}")
 
-            a_eliminar_str = input("Ingrese los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
+            a_eliminar_str = input("Ingresá los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
             
             if a_eliminar_str != '0':
                 indices_a_eliminar = set()
@@ -414,7 +416,7 @@ def consumo_cortesia():
             return
     
         while True:
-            respuesta_autoriza = input("Ingrese quién autoriza la cortesía ó (0) para cancelar: ").strip()
+            respuesta_autoriza = input("Ingresá quién autoriza la cortesía ó (0) para cancelar: ").strip()
             if respuesta_autoriza == "0":
                 print("\n❌ Registro de cortesía cancelado.")
                 return
