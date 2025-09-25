@@ -50,16 +50,12 @@ def nuevo_producto():
         data = {"codigo": codigo, "nombre": nombre, "precio": precio, "stock": stock, "pinmediato": pago_inmediato, "alerta": alerta}
         # We'll try to insert the product
         # and let the database tell us if it already exists.
-        db.iniciar()
         sql = "INSERT INTO PRODUCTOS (CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, PINMEDIATO) VALUES (?, ?, ?, ?, ?, ?)"
         db.ejecutar(sql, (data["codigo"], data["nombre"], data["precio"], data["stock"], data["alerta"], data["pinmediato"]))
-        db.confirmar()
         print(f'\n✔ Producto "{nombre.capitalize()}" registrado correctamente con codigo {codigo}.')
     except sqlite3.IntegrityError:
-        db.revertir()
         print(f"❌ Ya existe un producto con el código {codigo}.")
     except Exception as e:
-        db.revertir()
         print(f"❌ Error al registrar el producto: {e}")     
     return
 
@@ -205,7 +201,6 @@ def editar_producto():
                     codigo = nuevo_codigo
                     break
             try:
-                db.iniciar()
                 actualizar_producto_db(db, codigo_original, "CODIGO", codigo)
                 marca_tiempo = marca_de_tiempo()
                 log = (
@@ -218,10 +213,8 @@ def editar_producto():
                     f"Campo modificado -> \"CODIGO\": {nuevo_codigo}"
                 )
                 registrar_log("productos_editados.log", log)
-                db.confirmar()
                 print(f"\n✔ Código actualizado de {codigo_original} a {codigo}.")
             except Exception as e:
-                db.revertir()
                 print(f"\n❌ Error al actualizar el código: {e}")
             return
         if opcion == "2":
@@ -237,7 +230,6 @@ def editar_producto():
                     print("\n⚠️  El nombre del producto no puede contener solo caracteres o signos.")
                     continue
                 try:
-                    db.iniciar()
                     actualizar_producto_db(db, codigo, "NOMBRE", nombre)
                     marca_tiempo = marca_de_tiempo()
                     log = (
@@ -250,16 +242,13 @@ def editar_producto():
                         f"Campo modificado -> \"NOMBRE\": {nombre}"
                     )
                     registrar_log("productos_editados.log", log)
-                    db.confirmar()
                     print("\n✔ Nombre actualizado.")
                 except Exception as e:
-                    db.revertir()
                     print(f"\n❌ Error al actualizar el nombre: {e}")
                 return
         elif opcion == "3":
             respuesta_precio = pedir_precio("Ingrese el nuevo precio: ")
             try:
-                db.iniciar()
                 actualizar_producto_db(db, codigo, "PRECIO", respuesta_precio)
                 marca_tiempo = marca_de_tiempo()
                 log = (
@@ -272,10 +261,8 @@ def editar_producto():
                     f"Campo modificado -> \"PRECIO\": {respuesta_precio}"
                 )
                 registrar_log("productos_editados.log", log)
-                db.confirmar()
                 print("\n✔ Precio actualizado.")
             except Exception as e:
-                db.revertir()
                 print(f"❌ Error al actualizar el precio: {e}")
             return
         elif opcion == "4":
@@ -284,7 +271,6 @@ def editar_producto():
             else:
                 stock = pedir_entero("Ingrese el nuevo stock: ", minimo=0)
             try:
-                db.iniciar()
                 actualizar_producto_db(db, codigo, "STOCK", stock)
                 marca_tiempo = marca_de_tiempo()
                 log = (
@@ -297,20 +283,16 @@ def editar_producto():
                     f"Campo modificado -> \"STOCK\": {stock}"
                 )
                 registrar_log("productos_editados.log", log)
-                db.confirmar()
                 print("\n✔ Stock actualizado.")
             except sqlite3.IntegrityError:
-                db.revertir()
                 print("\n❌ No se puede actualizar el stock: tiene consumos o cortesías asociadas.")
             except Exception as e:
-                db.revertir()
                 print(f"\n❌ Error al actualizar el stock: {e}")
             return
         elif opcion == "5":
             while True:
                 alerta = pedir_entero("Ingrese el nuevo nivel de alerta de stock: ", minimo=1)
                 try:
-                    db.iniciar()
                     actualizar_producto_db(db, codigo, "ALERTA", alerta)
                     marca_tiempo = marca_de_tiempo()
                     log = (
@@ -323,10 +305,8 @@ def editar_producto():
                         f"Campo modificado -> \"ALERTA\": {alerta}"
                     )
                     registrar_log("productos_editados.log", log)
-                    db.confirmar()
                     print("\n✔ Alerta de stock actualizada.")
                 except Exception as e:
-                    db.revertir()
                     print(f"\n❌ Error al actualizar la alerta de stock: {e}")
                 return
         else:
@@ -361,7 +341,6 @@ def eliminar_producto():
             confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que desea eliminar este producto? (si/no): ")
             if confirmacion == "si":
                 try:
-                    db.iniciar()
                     db.ejecutar("DELETE FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
                     marca_tiempo = marca_de_tiempo()
                     log = (
@@ -373,15 +352,12 @@ def eliminar_producto():
                     )
                     registrar_log("productos_eliminados.log", log)
                     print("\n✔ Producto eliminado.")
-                    db.confirmar()
                     return
                 except sqlite3.IntegrityError:
                     print(f"\n❌ No se puede eliminar el producto {codigo}: tiene consumos o cortesías asociadas.")
-                    db.revertir()
                     return
                 except Exception as e:
                     print(f"\n❌ Ocurrió un error inesperado al eliminar el producto: {e}")
-                    db.revertir()
                     return
             else:
                 print("\n❌ Eliminación cancelada.")

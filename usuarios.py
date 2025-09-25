@@ -66,14 +66,27 @@ sesion = SesionActiva()
 
 def login(usuario, contraseña):
     # Verifica las credenciales y establece la sesión.
-    usuario_en_db = db.obtener_uno("SELECT CONTRASEÑA_HASH, NIVEL_DE_ACCESO FROM USUARIOS WHERE USUARIO=?", (usuario,))
+    try:
+        usuario_en_db = db.obtener_uno("SELECT CONTRASEÑA_HASH, NIVEL_DE_ACCESO FROM USUARIOS WHERE USUARIO=?", (usuario,))
+    except sqlite3.Error as e:
+        print(f"\n❌ Error de Base de Datos al intentar iniciar sesión: {e}")
+        # Si la consulta falla, el programa termina aquí si no hay más código de menú
+        # o devuelve False para no intentar continuar con la lógica de login.
+        return False
+    except AttributeError as e:
+        print(f"\n❌ Error: La conexión a la base de datos no está activa o el cursor no está inicializado. Detalle: {e}")
+        return False
+    except Exception as e:
+        # Esto captura otros errores, como que el módulo 'db' no se pudo inicializar
+        print(f"\n❌ Error inesperado al intentar obtener usuario: {e}")
+        return False
 
     if usuario_en_db:
         contraseña_hash = usuario_en_db["CONTRASEÑA_HASH"]
         nivel_de_acceso = usuario_en_db["NIVEL_DE_ACCESO"]
 
-        if bcrypt.checkpw(contraseña.encode('utf-8'), contraseña_hash.encode('utf-8')):
-            sesion.iniciar(usuario,nivel_de_acceso)
+        if contraseña_hash and bcrypt.checkpw(contraseña.encode('utf-8'), contraseña_hash):
+            sesion.iniciar(usuario, nivel_de_acceso)
             print(f"\n✔ Inicio de sesión exitoso. Bienvenido, {sesion.usuario}.")
             return True
 
@@ -145,14 +158,11 @@ def crear_usuario():
             # Encriptar la contraseña
             contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             try:
-                db.iniciar()
                 db.ejecutar("INSERT INTO USUARIOS (USUARIO, CONTRASEÑA_HASH, NIVEL_DE_ACCESO) VALUES (?, ?, ?)", 
                             (usuario, contraseña_hash, nivel_de_acceso))
-                db.confirmar()
                 print(f"\n✔ Usuario '{usuario}' de nivel de acceso {nivel_de_acceso} creado exitosamente.")
                 break
             except sqlite3.IntegrityError:
-                db.revertir()
                 print(f"\n⚠️  Error: El usuario '{usuario}' ya existe.")
         else:
             print("\n⚠️  Nivel de acceso no válido. Debe ser 0, 1 o 2.")
@@ -185,24 +195,18 @@ def editar_usuario():
             if opcion_editar == "1":
                 contraseña = getpass("Ingresa la nueva contraseña: ")
                 try:
-                    db.iniciar()
                     contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                     db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
-                    db.confirmar()
                     print(f"\n✔ Contraseña de '{usuario}' modificada.")
                 except Exception as e:
-                    db.revertir()
                     print(f"\n❌ Error al modificar la contraseña de '{usuario}': {e}")
                 return
             elif opcion_editar == "2":
                 nuevo_nivel = pedir_entero("Ingresa el nuevo nivel de acceso (0, 1, 2): ", minimo=0, maximo=2)
                 try:
-                    db.iniciar()
                     db.ejecutar("UPDATE USUARIOS SET NIVEL_DE_ACCESO=? WHERE USUARIO=?", (nuevo_nivel, usuario))
-                    db.confirmar()
                     print(f"\n✔ Nivel de acceso de '{usuario}' modificado a {nuevo_nivel}.")
                 except Exception as e:
-                    db.revertir()
                     print(f"\n❌ Error al modificar el nivel de acceso de '{usuario}': {e}")
                 return
             elif opcion_editar == "3":
@@ -213,12 +217,9 @@ def editar_usuario():
                         continue
                     else:
                         try:
-                            db.iniciar()
                             db.ejecutar("UPDATE USUARIOS SET USUARIO=? WHERE USUARIO=?", (nuevo_nombre, usuario))
-                            db.confirmar()
                             print(f"\n✔ Nombre de usuario de '{usuario}' modificado a {nuevo_nombre}.")
                         except Exception as e:
-                            db.revertir()
                             print(f"\n❌ Error al modificar el nombre de usuario de '{usuario}': {e}")
                         break
                 return
@@ -238,12 +239,9 @@ def eliminar_usuario():
             if confirmacion == "si":
                 # Elimina un usuario de la base de datos.
                 try:
-                    db.iniciar()
                     db.ejecutar("DELETE FROM USUARIOS WHERE USUARIO=?", (usuario,))
-                    db.confirmar()
                     print(f"\n✔ Usuario '{usuario}' eliminado.")
                 except Exception as e:
-                    db.revertir()
                     print(f"\n❌ Error al eliminar el usuario '{usuario}': {e}")
             else:
                 print("\n❌ Operación cancelada.")

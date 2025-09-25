@@ -91,7 +91,6 @@ def nuevo_huesped():
     data = {"apellido": apellido, "nombre": nombre, "telefono": telefono, "email": email, "booking": booking, "estado": estado, "checkin": checkin, "checkout": checkout, "documento": documento, "nacimiento": nacimiento, "habitacion": habitacion, "contingente": contingente, "registro": registro}
 
     try:
-        db.iniciar()
         sql = """
         INSERT INTO HUESPEDES (
             APELLIDO, NOMBRE, TELEFONO, EMAIL, BOOKING, ESTADO,
@@ -104,9 +103,7 @@ def nuevo_huesped():
             data["habitacion"], data["contingente"], data["registro"])
         
         db.ejecutar(sql, valores)
-        db.confirmar()
     except Exception as e:
-        db.revertir()
         print(f"\n❌ Error al registrar el huésped: {e}")
     print("\n✔ Huésped registrado correctamente.")
     return
@@ -164,16 +161,13 @@ def cerrar_habitacion():
             respuesta_pago = pedir_confirmacion("\n⚠️¿Desea marcar estos consumos como pagados? (si/no): ")
             if respuesta_pago == "si":
                 try:
-                    db.iniciar()
                     db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero,))
                     marca_tiempo = marca_de_tiempo()
                     registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {marca_tiempo}"
                     nuevo_registro = registro_anterior + separador + registro_pago
                     editar_huesped_db(db, numero, {"REGISTRO": nuevo_registro})
-                    db.confirmar()
                     print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
                 except Exception as e:
-                    db.revertir()
                     print(f"\n❌ Error al marcar consumos como pagados: {e}")
             else:
                 confirmar_cierre = pedir_confirmacion("\n⚠️  ¿Desea cerrar la habitación aun con consumos impagos? (si/no): ")
@@ -184,7 +178,6 @@ def cerrar_habitacion():
             print("\n✔ No hay consumos pendientes de pago para esta habitación.")
 
         # Releer el registro actualizado de la base antes de cerrar
-        row = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
         registro_anterior = str(huesped["REGISTRO"] or "")
         separador = "\n---\n"
 
@@ -197,10 +190,7 @@ def cerrar_habitacion():
         updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro}
 
         try:
-            db.iniciar()
             editar_huesped_db(db, numero, updates)
-            db.confirmar()
-
             # Construir log de cierre
             marca_tiempo = marca_de_tiempo()
             # Obtener información previa del huésped para el log
@@ -224,7 +214,6 @@ def cerrar_habitacion():
             registrar_log("huespedes_cerrados.log", log)
             print(f"\n✔ Habitación {habitacion} cerrada correctamente.")
         except Exception as e:
-            db.revertir()
             print(f"\n❌ Error al cerrar la habitación: {e}")
         return
 
@@ -258,7 +247,7 @@ def buscar_huesped():
                     continue
                 if campo == "APELLIDO":
                     # La consulta a la DB se hace amplia, sin normalizar acentos
-                    query = f"SELECT * FROM HUESPEDES WHERE APELLIDO LIKE ?"
+                    query = "SELECT * FROM HUESPEDES WHERE APELLIDO LIKE ?"
                     params = (f"%{valor_raw}%",)
                     huespedes_iniciales = db.obtener_todos(query, params)
                     # Ahora, filtramos en Python usando unidecode
@@ -341,12 +330,9 @@ def cambiar_estado():
                 registro = registro_nuevo
             updates = {"ESTADO": nuevo_estado, "CHECKIN": checkin, "CHECKOUT": checkout, "HABITACION": 0, "NACIMIENTO": nacimiento, "REGISTRO": registro}
             try:
-                db.iniciar()
                 editar_huesped_db(db, numero, updates)
-                db.confirmar()
                 print(f"\n✔ Estado actualizado a {nuevo_estado}.")
             except Exception as e:
-                db.revertir()
                 print(f"\n❌ Error al actualizar el estado: {e}")
             break
 
@@ -373,12 +359,9 @@ def cambiar_estado():
             # Unificar todas las actualizaciones en un diccionario
             updates = {"ESTADO": nuevo_estado, "CHECKIN": checkin, "CHECKOUT": checkout, "DOCUMENTO": documento, "NACIMIENTO": nacimiento, "HABITACION": habitacion, "CONTINGENTE": contingente, "REGISTRO": registro}
             try:
-                db.iniciar()
                 editar_huesped_db(db, numero, updates)
-                db.confirmar()
                 print(f"\n✔ Estado actualizado a {nuevo_estado}.")
             except Exception as e:
-                db.revertir()
                 print(f"\n❌ Error al actualizar el estado: {e}")
             break
 
@@ -398,7 +381,6 @@ def cambiar_estado():
 
                 if respuesta_pago == "si":
                     try:
-                        db.iniciar()
                         db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero,))
 
                         # Añadir entrada en el registro del huésped
@@ -410,10 +392,8 @@ def cambiar_estado():
                         nuevo_registro = registro_anterior + separador + registro_pago
                         
                         editar_huesped_db(db, numero, {"REGISTRO": nuevo_registro})
-                        db.confirmar()
                         print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
                     except Exception as e:
-                        db.revertir()
                         print(f"\n❌ Error al marcar consumos como pagados: {e}")
                 else:
                     confirmar_cierre = pedir_confirmacion("\n⚠️¿Desea cerrar el huésped aun con consumos impagos? (si/no): ")
@@ -429,9 +409,7 @@ def cambiar_estado():
             updates = {"ESTADO": nuevo_estado, "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro}
 
             try:
-                db.iniciar()
                 editar_huesped_db(db, numero, updates)
-                db.confirmar()
 
                 # Construir log de cierre
                 marca_tiempo = marca_de_tiempo()
@@ -455,7 +433,6 @@ def cambiar_estado():
                 )
                 registrar_log("huespedes_cerrados.log", log)
             except Exception as e:
-                db.revertir()
                 print(f"\n❌ Error al cerrar el huésped: {e}")
 
     return
@@ -551,12 +528,9 @@ def editar_huesped():
             nuevo_registro = registro_anterior + separador + registro_actual
             updates = {campo_sql: nuevo_valor, "REGISTRO": nuevo_registro}
             try:
-                db.iniciar()
                 editar_huesped_db(db, numero, updates)
-                db.confirmar()
                 print(f"✔ {campo_sql} actualizado correctamente.")
             except Exception as e:
-                db.revertir()
                 print(f"Error al actualizar {campo_sql}: {e}")
             break
         else:
@@ -589,9 +563,7 @@ def eliminar_huesped():
         confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que desea eliminar este huésped? (si/no): ")
         if confirmacion == "si":
             try:
-                db.iniciar()
                 db.ejecutar("DELETE FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-                db.confirmar()
                 marca_tiempo = marca_de_tiempo()
                 log = (
                     f"[{marca_tiempo}] HUÉSPED ELIMINADO:\n"
@@ -608,10 +580,8 @@ def eliminar_huesped():
                 registrar_log("huespedes_eliminados.log", log)
                 print("\n✔ Huésped eliminado.")
             except sqlite3.IntegrityError:
-                db.revertir()
                 print("\n❌ No se puede eliminar el huésped porque tiene consumos pendientes.")
             except Exception as e:
-                db.revertir()
                 print(f"\n❌ Error al eliminar huésped: {e}")
             return
         else:

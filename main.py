@@ -1,7 +1,5 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
-#Probar actualizar_producto_db desde editar_producto
-
 #Inventario para consumibles/vajilla/mayoristas. Ver si se puede relacionar con productos o crear tabla nueva.
 
 #El sistema de consumos ya descuenta stock y marca pagos. Podría ser útil agregar un trigger o constraint en la DB para que nunca quede stock negativo
@@ -34,7 +32,6 @@ from utiles import pedir_confirmacion
 
 def usuarios_existe():
     try:
-        db.iniciar()
         db.ejecutar('''
             CREATE TABLE IF NOT EXISTS USUARIOS (
                 ID INTEGER PRIMARY KEY,
@@ -43,9 +40,7 @@ def usuarios_existe():
                 NIVEL_DE_ACCESO INTEGER NOT NULL
             )
         ''')
-        db.confirmar()
     except Exception as e:
-        db.revertir()
         print(f"❌ Error al crear la tabla USUARIOS: {e}")
 
     num_usuarios = db.obtener_uno("SELECT COUNT(*) AS total FROM USUARIOS")["total"]
@@ -55,44 +50,34 @@ def usuarios_existe():
         contraseña = "administrador"
         contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt())
         try:
-            db.iniciar()
             db.ejecutar("INSERT INTO USUARIOS (USUARIO, CONTRASEÑA_HASH, NIVEL_DE_ACCESO) VALUES (?, ?, ?)", 
                         (usuario, contraseña_hash, 3))
-            db.confirmar()
         except sqlite3.IntegrityError:
-            db.revertir()
             print("\n❌ Error: No se pudo crear un Superusuario.")
 
 def productos_existe():
     try:
-        db.iniciar()
         db.ejecutar('''CREATE TABLE IF NOT EXISTS PRODUCTOS(
                     CODIGO INTEGER PRIMARY KEY,
                     NOMBRE TEXT NOT NULL,
                     PRECIO REAL NOT NULL CHECK (PRECIO >= 0),
-                    STOCK INTEGER NOT NULL,
+                    STOCK INTEGER NOT NULL CHECK (STOCK >= 0 OR STOCK = -1),
                     ALERTA INTEGER NOT NULL DEFAULT 5,
                     PINMEDIATO INTEGER NOT NULL DEFAULT 0 CHECK (PINMEDIATO IN (0,1)))''')
-        db.confirmar()
     except Exception as e:
-        db.revertir()
         print(f"❌ Error al crear la tabla PRODUCTOS: {e}")
 
 def huespedes_existe():
     try:
-        db.iniciar()
         db.ejecutar('''CREATE TABLE IF NOT EXISTS HUESPEDES(NUMERO INTEGER PRIMARY KEY AUTOINCREMENT,
                     APELLIDO TEXT, NOMBRE TEXT, TELEFONO INTEGER, EMAIL TEXT, BOOKING TEXT, ESTADO TEXT,
                     CHECKIN TEXT, CHECKOUT TEXT, DOCUMENTO TEXT, NACIMIENTO INTEGER, HABITACION INTEGER,
                     CONTINGENTE INTEGER, REGISTRO TEXT)''')
-        db.confirmar()
     except Exception as e:
-        db.revertir()
         print(f"❌ Error al crear la tabla HUESPEDES: {e}")
 
 def consumos_existe():
     try:
-        db.iniciar()
         db.ejecutar('''CREATE TABLE IF NOT EXISTS CONSUMOS(
                     ID INTEGER PRIMARY KEY AUTOINCREMENT,
                     HUESPED INTEGER NOT NULL, PRODUCTO INTEGER NOT NULL,
@@ -101,14 +86,11 @@ def consumos_existe():
                     FOREIGN KEY (HUESPED) REFERENCES HUESPEDES(NUMERO),
                     FOREIGN KEY (PRODUCTO) REFERENCES PRODUCTOS(CODIGO)
                     ON UPDATE CASCADE ON DELETE RESTRICT)''')
-        db.confirmar()
     except Exception as e:
-        db.revertir()
         print(f"❌ Error al crear la tabla CONSUMOS: {e}")
 
 def cortesias_existe():
     try:
-        db.iniciar()
         db.ejecutar('''CREATE TABLE IF NOT EXISTS CORTESIAS(
                     ID INTEGER PRIMARY KEY AUTOINCREMENT,
                     PRODUCTO INTEGER NOT NULL,
@@ -116,9 +98,7 @@ def cortesias_existe():
                     FECHA TEXT NOT NULL, AUTORIZA TEXT NOT NULL,
                     FOREIGN KEY (PRODUCTO) REFERENCES PRODUCTOS(CODIGO)
                     ON UPDATE CASCADE ON DELETE RESTRICT)''')
-        db.confirmar()
     except Exception as e:
-        db.revertir()
         print(f"❌ Error al crear la tabla CORTESIAS: {e}")
 
 def inicio():

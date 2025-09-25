@@ -45,9 +45,7 @@ def ingresar_compra():
         cantidad = pedir_entero(f"Ingrese la cantidad comprada de '{nombre}': ", minimo=1)
         nuevo_stock = stock + cantidad
         try:
-            db.iniciar()
             db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
-            db.confirmar()
             marca_tiempo = marca_de_tiempo()
             log = (
                 f"[{marca_tiempo}] COMPRA INGRESADA por {usuarios.sesion.usuario}:\n"
@@ -60,7 +58,6 @@ def ingresar_compra():
             else:
                 print(f"\n✔ Se aumentó {cantidad} unidades el stock de '{nombre}' (Nuevo stock: {nuevo_stock}).")
         except Exception as e:
-            db.revertir()
             print(f"\n❌ Error al actualizar el stock de '{nombre}': {e}")
 
         return
@@ -91,9 +88,7 @@ def editar_inventario():
         nombre = producto["NOMBRE"]
         nuevo_stock = pedir_entero(f"Ingrese el nuevo stock de '{nombre}': ", minimo=0)
         try:
-            db.iniciar()
             db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
-            db.confirmar()
             marca_tiempo = marca_de_tiempo()
             log = (
                 f"[{marca_tiempo}] INVENTARIO EDITADO por {usuarios.sesion.usuario}:\n"
@@ -103,7 +98,6 @@ def editar_inventario():
             registrar_log("inventario_ediciones.log", log)
             print(f"\n✔ Stock actualizado para '{nombre}'. Nuevo stock: {nuevo_stock}.")
         except Exception as e: 
-            db.revertir()
             print(f"\n❌ Error al actualizar el inventario: {e}")
 
         return

@@ -116,7 +116,6 @@ def agregar_consumo():
     if consumos_agregados:
         print("\n✔ Registrando consumos en la base de datos...")
         try:
-            db.iniciar()
             for consumo in consumos_agregados:
                 fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
                 db.ejecutar("INSERT INTO CONSUMOS (HUESPED, PRODUCTO, CANTIDAD, FECHA, PAGADO) VALUES (?, ?, ?, ?, ?)",
@@ -137,12 +136,10 @@ def agregar_consumo():
                 else:
                     nuevo_registro = registro_consumo
                 editar_huesped_db(db, numero_huesped, {"REGISTRO": nuevo_registro})
-            db.confirmar()
             print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {habitacion}:")
             for i, consumo in enumerate(consumos_agregados):
                 print(f"  {i + 1}. Producto: {consumo['nombre'].capitalize()} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
         except Exception as e:
-            db.revertir()
             print(f"\n❌ Error al registrar consumos: {e}")
     else:
         print("\n❌ No se registraron nuevos consumos.")
@@ -244,7 +241,6 @@ def eliminar_consumos():
                 return
         
         try:
-            db.iniciar()
             for i in a_eliminar:
                 consumo_id, _, producto_id, producto_nombre, cantidad = consumos[i]
 
@@ -266,11 +262,8 @@ def eliminar_consumos():
                     f"Acción realizada por: {usuarios.sesion.usuario}"
                 )
                 registrar_log("consumos_eliminados.log", log)
-                
-            db.confirmar()
             print(f"✔ Se eliminaron {len(a_eliminar)} consumos.")
         except Exception as e:
-            db.revertir()
             print(f"\n❌ Error al eliminar consumos: {e}")
         return
 
@@ -337,13 +330,10 @@ def registrar_pago():
             print("❌ No se seleccionaron consumos válidos.")
             return
         try:
-            db.iniciar()
             for cid in consumos_a_pagar:
                 db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE ID = ?", (cid,))
-            db.confirmar()
             print(f"\n✔ Se marcaron {len(consumos_a_pagar)} consumo(s) como pagados.")
         except Exception as e:
-            db.revertir()
             print(f"\n❌ Error al registrar el pago: {e}")
             return
 
@@ -443,7 +433,6 @@ def consumo_cortesia():
     if cortesias_agregadas:
         print("\nRegistrando cortesía...")
         try:
-            db.iniciar()
             for cortesia in cortesias_agregadas:
                 fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
                 db.ejecutar("INSERT INTO CORTESIAS (PRODUCTO, CANTIDAD, FECHA, AUTORIZA) VALUES (?, ?, ?, ?)",
@@ -460,12 +449,10 @@ def consumo_cortesia():
                     f"Registrado por: {usuarios.sesion.usuario}"
                 )
                 registrar_log("consumos_cortesia.log", log)
-            db.confirmar()
             print(f"\n✔ Cortesía autorizada por {autoriza.capitalize()} registrada correctamente.")
             for i, cortesia in enumerate(cortesias_agregadas):
                 print(f"  {i + 1}. {cortesia['nombre'].capitalize()}, (x{cortesia['cantidad']})")
         except Exception as e:
-            db.revertir()
             print(f"\n❌ Error al registrar la cortesía: {e}")
     else:
         print("\n❌ No se registraron nuevas cortesías.")
