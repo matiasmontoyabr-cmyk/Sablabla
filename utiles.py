@@ -142,7 +142,7 @@ def opcion_menu(leyenda, cero=False, vacio=False, asterisco=False, minimo=None, 
     # Retorna el entero validado, 0 si se permite y elige cancelar, o None si se permite vacío.
 
     while True:
-        entrada = input(f"{mensaje} ").strip()
+        entrada = input(f"{leyenda} ").strip()
 
         # 1. Validar entrada vacía (Enter)
         if not entrada:
