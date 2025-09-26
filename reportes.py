@@ -8,7 +8,13 @@ from utiles import HABITACIONES,pedir_confirmacion, imprimir_huespedes, opcion_m
 def reporte_diario():
     hoy = date.today().isoformat()
 
-    query = """SELECT H.HABITACION, H.NOMBRE, H.APELLIDO, C.FECHA, P.NOMBRE, C.CANTIDAD FROM CONSUMOS C JOIN HUESPEDES H ON C.HUESPED = H.NUMERO JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO WHERE C.FECHA LIKE ? ORDER BY H.HABITACION, C.FECHA"""
+    query = """SELECT H.HABITACION, H.NOMBRE AS HUESPED_NOMBRE, H.APELLIDO, C.FECHA,
+    P.NOMBRE AS PRODUCTO, C.CANTIDAD FROM CONSUMOS C
+    JOIN HUESPEDES H ON C.HUESPED = H.NUMERO
+    JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
+    WHERE C.FECHA LIKE ?
+    ORDER BY H.HABITACION, C.FECHA
+    """
 
     consumos = db.obtener_todos(query, (f"{hoy}%",)) 
 
@@ -21,7 +27,7 @@ def reporte_diario():
     habitacion_actual = None
     for consumo in consumos:
         habitacion = consumo["HABITACION"]
-        nombre = consumo["NOMBRE"]
+        nombre = consumo["HUESPED_NOMBRE"]
         apellido = consumo["APELLIDO"]
         fecha = consumo["FECHA"]
         producto = consumo["PRODUCTO"]

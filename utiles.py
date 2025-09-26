@@ -27,8 +27,8 @@ def registrar_log(nombre_archivo, contenido):
 def imprimir_huesped(huesped):
     print("\nHuésped seleccionado:")
     columnas = [
-        "NUMERO", "APELLIDO", "NOMBRE", "TELEFONO", "EMAIL", "BOOKING", "ESTADO", "CHECKIN", "CHECKOUT",
-        "DOCUMENTO", "NACIMIENTO", "HABITACION", "CONTINGENTE", "REGISTRO"]
+        "NUMERO", "APELLIDO", "NOMBRE", "TELEFONO", "EMAIL", "APP", "ESTADO", "CHECKIN", "CHECKOUT",
+        "DOCUMENTO", "HABITACION", "CONTINGENTE", "REGISTRO"]
     for col in columnas:
         val = huesped[col] # Accede al valor por el nombre de la columna
         display_val = val # Por defecto, el valor es el mismo
@@ -260,6 +260,34 @@ def pedir_precio(mensaje="Ingresá el precio: "):
 
         except ValueError:
             print("\n❌ Ingresá un número válido (ej: 1499.90).")
+
+def pedir_nombre(mensaje):
+    # Devuelve el nombre limpio (en minúsculas) si es válido, o None si el usuario cancela.
+    while True:
+        respuesta = input(mensaje).strip()
+        
+        # 1. Cancelación
+        if respuesta == "0":
+            print("\n❌ Operación cancelada.")
+            return None # Devolvemos None para indicar cancelación
+
+        # 2. No vacío
+        if not respuesta:
+            print("\n⚠️  El campo no puede estar vacío.")
+            continue
+            
+        # 3. Limpieza de caracteres (Lógica actual)
+        # Quitar acentos, reemplazar guiones por espacios y quitar caracteres especiales
+        nombre_unidecode = unidecode(respuesta)
+        nombre_limpio = nombre_unidecode.replace('-', ' ').replace('_', ' ')
+        nombre_final = re.sub(r"[^a-zA-Z0-9\s]", "", nombre_limpio).lower()
+        
+        # 4. Verificación de contenido válido
+        if not nombre_final.strip():
+            print("\n⚠️  El valor ingresado no puede contener solo caracteres especiales o signos.")
+            continue
+            
+        return nombre_final # Devolvemos el nombre limpio y validado
 
 def pedir_habitación(checkin, checkout, contingente, excluir_numero=None):
     while True:

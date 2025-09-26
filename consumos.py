@@ -6,141 +6,184 @@ from huespedes import buscar_huesped, editar_huesped_db
 from unidecode import unidecode
 from utiles import registrar_log, imprimir_huesped, pedir_entero, pedir_confirmacion, imprimir_productos, formatear_fecha, marca_de_tiempo, opcion_menu
 
-@usuarios.requiere_acceso(1)
-def agregar_consumo():
+def _seleccionar_huesped():
+    # Gestiona la selección de un huésped. Devuelve el diccionario del huésped
+    # o None si se cancela la operación.
     leyenda_hab = "\nIngresá el número de habitación para agregar un consumo, (*) para buscar ó (0) para cancelar: "
     while True:
         respuesta = opcion_menu(leyenda_hab, cero=True, asterisco=True, minimo=1, maximo=7)
         if respuesta == 0:
-            return
+            return None
         if respuesta == "*":
             buscar_huesped()
             continue
+
         habitacion = respuesta
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", (habitacion,))
-        if huesped is None:
+        if huesped:
+            nombre_display = ' '.join(word.capitalize() for word in str(huesped["NOMBRE"]).split())
+            apellido_display = ' '.join(word.capitalize() for word in str(huesped["APELLIDO"]).split())
+            print(f"Habitación {huesped['HABITACION']} - Huésped {nombre_display} {apellido_display}")
+            return huesped
+        else:
             print("\n❌ No se encontró un huésped ABIERTO en esa habitación.")
-            continue
 
-        nombre_display = ' '.join(word.capitalize() for word in str(huesped["NOMBRE"]).split())
-        apellido_display = ' '.join(word.capitalize() for word in str(huesped["APELLIDO"]).split())
-        print(f"Habitación {huesped['HABITACION']} - Huésped {nombre_display} {apellido_display}")
-        break
-
-    numero_huesped = huesped["NUMERO"]
+def _recolectar_consumos(huesped_numero):
+    """
+    Recolecta los productos consumidos por un huésped. Devuelve una lista de diccionarios de consumo.
+    """
     consumos_agregados = []
-
+    leyenda_cod = "\nIngresá el código del producto consumido, (*) para buscar ó (0) para finalizar: "
     while True:
-        leyenda_cod = "\nIngresá el código del producto consumido, (*) para buscar ó (0) para finalizar: "
         codigo = opcion_menu(leyenda_cod, cero=True, asterisco=True, minimo=1)
         if codigo == 0:
             break
-        elif codigo == "*":
+        if codigo == "*":
             productos = db.obtener_todos("SELECT * FROM PRODUCTOS WHERE STOCK > 0 OR STOCK = -1")
             if not productos:
                 print("\n❌ No hay productos en stock.")
-                return
             else:
                 imprimir_productos(productos)
-                continue
+            continue
 
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
         if not producto:
             print("\n❌ Producto no encontrado.")
             continue
 
-        nombre = producto["NOMBRE"]
-        stock = producto["STOCK"]
-        pinmediato = producto["PINMEDIATO"]
-        print(f"Producto seleccionado: {nombre.capitalize()} (Stock: {'Infinito' if stock == -1 else stock})")
+        consumo = _procesar_un_producto(producto, huesped_numero)
+        if consumo:
+            consumos_agregados.append(consumo)
+    
+    return consumos_agregados
 
-        while True:
-            cantidad = pedir_entero("Ingresá la cantidad consumida ó (0) para cancelar: ", minimo=0)
-            if cantidad == 0:
-                print("\n❌ Producto cancelado.")
-                break
-            elif stock != -1 and cantidad > stock:
-                print(f"\n❌ No hay suficiente stock. Disponibles: {stock}")
-                continue
+def _procesar_un_producto(producto, huesped_numero):
+    # Maneja la lógica para agregar una cantidad específica de un producto.
+    # Devuelve un diccionario de consumo o None si se cancela.
+
+    nombre = producto["NOMBRE"]
+    stock = producto["STOCK"]
+    pinmediato = producto["PINMEDIATO"]
+    print(f"Producto seleccionado: {nombre.capitalize()} (Stock: {'Infinito' if stock == -1 else stock})")
+
+    while True:
+        cantidad = pedir_entero("Ingresá la cantidad consumida ó (0) para cancelar: ", minimo=0)
+        if cantidad == 0:
+            print("\n❌ Producto cancelado.")
+            return None
+        
+        if stock != -1 and cantidad > stock:
+            print(f"\n❌ No hay suficiente stock. Disponibles: {stock}")
+            continue
+
+        pagado = 0
+        if pinmediato == 1:
+            if pedir_confirmacion(f"\n⚠️  '{nombre}' debería ser pagado en el momento. ¿Querés registrarlo como pagado? (si/no): ") == "si":
+                pagado = 1
+                print("✔ Se registrará el consumo como pagado.")
             else:
-                pagado = 0
-                if pinmediato == 1:
-                    if pedir_confirmacion(f"\n⚠️  '{nombre}' debería ser pagado en el momento. ¿Querés registrarlo como pagado? (si/no): ") == "si":
-                        pagado = 1
-                        print("✔ Se registrará el consumo como pagado.")
-                    else:
-                        print("\n⚠️  El consumo se registrará como pendiente de pago.")
+                print("\n⚠️  El consumo se registrará como pendiente de pago.")
 
-                consumos_agregados.append({
-                    "huesped_id": huesped["NUMERO"],
-                    "codigo": codigo,
-                    "nombre": nombre,
-                    "cantidad": cantidad,
-                    "pagado": pagado,
-                    "stock_anterior": stock
-                })
-                print(f"\n✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
-                break
-    if consumos_agregados:
-        respuesta = pedir_confirmacion("\n¿Querés eliminar alguno de los consumos recién agregados? (si/no): ", defecto="no")
-        if respuesta == "si":
-            print("\nConsumos recién agregados:")
-            for i, consumo in enumerate(consumos_agregados):
-                print(f"  {i + 1}. Producto: {consumo['nombre']} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
+        print(f"\n✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
+        return {
+            "huesped_id": huesped_numero,
+            "codigo": producto["CODIGO"],
+            "nombre": nombre,
+            "cantidad": cantidad,
+            "pagado": pagado,
+            "stock_anterior": stock
+        }
 
-            a_eliminar_str = input("\nIngresá los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
-            
-            if a_eliminar_str != '0':
-                indices_a_eliminar = set()
-                partes = re.split(r'[,\s]+', a_eliminar_str)
-                for parte in partes:
-                    try:
-                        indice = int(parte) - 1
-                        if 0 <= indice < len(consumos_agregados):
-                            indices_a_eliminar.add(indice)
-                        else:
-                            print(f"❌ El número {indice + 1} es inválido. Se ignorará.")
-                    except ValueError:
-                        print(f"❌ La entrada '{parte}' no es un número. Se ignorará.")
+def _editar_consumos_agregados(consumos):
+    # Permite al usuario eliminar consumos de la lista recién agregada.
+    # Devuelve la lista modificada.
 
-                if indices_a_eliminar:
-                    for indice in sorted(list(indices_a_eliminar), reverse=True):
-                        consumo_eliminado = consumos_agregados.pop(indice)
-                        print(f"✔ Consumo de '{consumo_eliminado['nombre']}' eliminado.")
+    if not consumos:
+        return consumos
 
-    # Finalmente, se guardan los consumos que quedaron en la lista
-    if consumos_agregados:
-        print("\n✔ Registrando consumos en la base de datos...")
+    if pedir_confirmacion("\n¿Querés eliminar alguno de los consumos recién agregados? (si/no): ", defecto="no") != "si":
+        return consumos
+
+    print("\nConsumos recién agregados:")
+    for i, consumo in enumerate(consumos):
+        print(f"  {i + 1}. Producto: {consumo['nombre']} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
+
+    a_eliminar_str = input("\nIngresá los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
+    if a_eliminar_str == '0':
+        return consumos
+        
+    indices_a_eliminar = set()
+    partes = re.split(r'[,\s]+', a_eliminar_str)
+    for parte in partes:
         try:
-            for consumo in consumos_agregados:
-                fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
-                db.ejecutar("INSERT INTO CONSUMOS (HUESPED, PRODUCTO, CANTIDAD, FECHA, PAGADO) VALUES (?, ?, ?, ?, ?)",
-                            (consumo['huesped_id'], consumo['codigo'], consumo['cantidad'], fecha, consumo['pagado']))
-                
-                if consumo['stock_anterior'] != -1:
-                    nuevo_stock = consumo['stock_anterior'] - consumo['cantidad']
-                    db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, consumo['codigo']))
-                    
-                registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero_huesped,))
-                registro_anterior = str(registro_anterior_data["REGISTRO"] or "") if registro_anterior_data else ""
-                separador = "\n---\n"
-                registro_consumo = f"Consumo agregado: {consumo['nombre']} (x{consumo['cantidad']}) - {fecha}"
-                if consumo['pagado'] == 1:
-                    registro_consumo += " (PAGADO)"
-                if registro_anterior.strip():
-                    nuevo_registro = registro_anterior + separador + registro_consumo
-                else:
-                    nuevo_registro = registro_consumo
-                editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
-            print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {habitacion}:")
-            for i, consumo in enumerate(consumos_agregados):
-                print(f"  {i + 1}. Producto: {consumo['nombre'].capitalize()} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
-        except Exception as e:
-            print(f"\n❌ Error al registrar consumos: {e}")
+            indice = int(parte) - 1
+            if 0 <= indice < len(consumos):
+                indices_a_eliminar.add(indice)
+            else:
+                print(f"❌ El número {indice + 1} es inválido. Se ignorará.")
+        except ValueError:
+            print(f"❌ La entrada '{parte}' no es un número. Se ignorará.")
+
+    if indices_a_eliminar:
+        for indice in sorted(list(indices_a_eliminar), reverse=True):
+            consumo_eliminado = consumos.pop(indice)
+            print(f"✔ Consumo de '{consumo_eliminado['nombre']}' eliminado.")
+    
+    return consumos
+
+def _guardar_consumos_en_db(consumos, huesped):
+    # Guarda la lista final de consumos en la base de datos, actualizando stock y registro.
+
+    print("\n✔ Registrando consumos en la base de datos...")
+    numero_huesped = huesped["NUMERO"]
+    try:
+        for consumo in consumos:
+            fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
+            
+            # 1. Insertar el consumo
+            db.ejecutar("INSERT INTO CONSUMOS (HUESPED, PRODUCTO, CANTIDAD, FECHA, PAGADO) VALUES (?, ?, ?, ?, ?)",
+                        (consumo['huesped_id'], consumo['codigo'], consumo['cantidad'], fecha, consumo['pagado']))
+            
+            # 2. Actualizar stock del producto
+            if consumo['stock_anterior'] != -1:
+                nuevo_stock = consumo['stock_anterior'] - consumo['cantidad']
+                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, consumo['codigo']))
+            
+            # 3. Abre el registro del huésped
+            registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero_huesped,))
+            registro_anterior = str(registro_anterior_data["REGISTRO"] or "") if registro_anterior_data else ""
+            
+            # 4. Prepara el registro de la acción actual
+            registro_consumo = f"Consumo agregado: {consumo['nombre']} (x{consumo['cantidad']}) - {fecha}"
+            if consumo['pagado'] == 1:
+                registro_consumo += " (PAGADO)"
+            
+            nuevo_registro = (registro_anterior + "\n---\n" + registro_consumo) if registro_anterior.strip() else registro_consumo
+            editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
+
+        print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {huesped['HABITACION']}:")
+        for i, consumo in enumerate(consumos):
+            print(f"  {i + 1}. Producto: {consumo['nombre'].capitalize()} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
+
+    except Exception as e:
+        print(f"\n❌ Error al registrar consumos: {e}")
+
+@usuarios.requiere_acceso(1)
+def agregar_consumo():
+    # Función principal para coordinar el proceso de agregar consumos a un huésped.
+    huesped = _seleccionar_huesped()
+    if not huesped:
+        print("\n❌ Operación cancelada.")
+        return
+
+    consumos_pendientes = _recolectar_consumos(huesped["NUMERO"])
+    
+    consumos_finales = _editar_consumos_agregados(consumos_pendientes)
+
+    if consumos_finales:
+        _guardar_consumos_en_db(consumos_finales, huesped)
     else:
         print("\n❌ No se registraron nuevos consumos.")
-
-    return
 
 @usuarios.requiere_acceso(0)
 def ver_consumos():

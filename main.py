@@ -1,11 +1,9 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
 
-#creo que editar_usuario() y eliminar_usuario() no verifican si el usuario existe
-
 #Revisar errores por acceso posicional
 
-#Hacer función pedir_nombre()
+#Aplicar pedir_nombre() en editar_huesped() y demás
 
 #Muestreo de coretsías en generar_reportes, con opción diario, semanal, mensual, histórico. Requiere mínimo lvl 2.
 
@@ -73,8 +71,9 @@ def productos_existe():
 def huespedes_existe():
     try:
         db.ejecutar('''CREATE TABLE IF NOT EXISTS HUESPEDES(NUMERO INTEGER PRIMARY KEY AUTOINCREMENT,
-                    APELLIDO TEXT, NOMBRE TEXT, TELEFONO INTEGER, EMAIL TEXT, APP TEXT, ESTADO TEXT,
-                    CHECKIN TEXT, CHECKOUT TEXT, DOCUMENTO TEXT, HABITACION INTEGER,
+                    APELLIDO TEXT NOT NULL, NOMBRE TEXT NOT NULL, TELEFONO INTEGER, EMAIL TEXT, APP TEXT,
+                    ESTADO TEXT NOT NULL CHECK(ESTADO IN ('ABIERTO','CERRADO','PROGRAMADO')),
+                    CHECKIN TEXT, CHECKOUT TEXT, DOCUMENTO TEXT, HABITACION INTEGER NOT NULL,
                     CONTINGENTE INTEGER, REGISTRO TEXT)''')
     except Exception as e:
         print(f"❌ Error al crear la tabla HUESPEDES: {e}")

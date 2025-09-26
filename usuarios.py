@@ -149,8 +149,17 @@ def crear_usuario():
         if usuario == "0":
             print("\n❌ Operación cancelada.")
             return
-        else:
-            break
+        if not usuario:
+            print("\n⚠️  El nombre de usuario no puede estar vacío.")
+            continue
+        usuario_existente = db.obtener_uno("SELECT USUARIO FROM USUARIOS WHERE USUARIO = ?", (usuario,))
+        
+        if usuario_existente:
+            print(f"\n❌ Error: El usuario '{usuario}' ya existe. Por favor, elige otro nombre.")
+            continue # Vuelve al inicio del bucle para pedir un nuevo nombre
+        
+        # Si no existe, salimos del bucle para continuar con la creación
+        break
     contraseña = getpass("🔑 Ingresa la contraseña: ")
     while True:
         nivel_de_acceso = int(pedir_entero("Nivel de acceso (0, 1, 2): ", minimo=0, maximo=2))
