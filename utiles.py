@@ -160,7 +160,7 @@ def opcion_menu(leyenda, cero=False, vacio=False, asterisco=False, minimo=None, 
                 print("\n⚠️ '0' no es una opción valida.")
                 continue
 
-        if entrada = "*":
+        if entrada == "*":
             if asterisco:
                 return "*"
             else:

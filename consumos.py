@@ -131,7 +131,7 @@ def agregar_consumo():
                     nuevo_registro = registro_anterior + separador + registro_consumo
                 else:
                     nuevo_registro = registro_consumo
-                editar_huesped_db(db, numero_huesped, {"REGISTRO": nuevo_registro})
+                editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
             print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {habitacion}:")
             for i, consumo in enumerate(consumos_agregados):
                 print(f"  {i + 1}. Producto: {consumo['nombre'].capitalize()} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
