@@ -385,121 +385,161 @@ def registrar_pago():
             print(f"\n❌ Error al registrar el pago: {e}")
             return
 
-@usuarios.requiere_acceso(2)
-def consumo_cortesia():
-    cortesias_agregadas = []
-    leyenda_cod = "\nIngresá el código del producto consumido, (*) para buscar ó (0) para finalizar: "
+def _recolectar_cortesias():
+    # Recolecta productos para cortesía en un bucle interactivo.
+    # Devuelve una lista de diccionarios de cortesías.
+
+    cortesias = []
+    leyenda = "\nIngresá el código del producto, (*) para buscar ó (0) para finalizar: "
     while True:
-        codigo = opcion_menu(leyenda_cod, cero=True, asterisco=True, minimo=1)
+        codigo = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
         if codigo == 0:
             break
-        elif codigo == "*":
+        if codigo == "*":
             productos = db.obtener_todos("SELECT * FROM PRODUCTOS WHERE STOCK > 0 OR STOCK = -1")
-            if not productos:
-                print("\n❌ No hay productos en stock.")
-                continue
-            else:
+            if productos:
                 imprimir_productos(productos)
-                continue
+            else:
+                print("\n❌ No hay productos en stock.")
+            continue
 
         producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
         if not producto:
             print("\n⚠️  Producto no encontrado.")
             continue
-
+        
+        # Procesa la cantidad para el producto seleccionado
         nombre = producto["NOMBRE"]
-        stock  = producto["STOCK"]
+        stock = producto["STOCK"]
         print(f"\nProducto seleccionado: {nombre} (Stock: {'Infinito' if stock == -1 else stock})")
-
+        
         while True:
             cantidad = pedir_entero("Ingresá la cantidad ó (0) para cancelar: ", minimo=0)
             if cantidad == 0:
                 print("\n❌ Producto cancelado.")
                 break
-            elif stock != -1 and cantidad > stock:
+            if stock != -1 and cantidad > stock:
                 print(f"\n❌ No hay suficiente stock. Disponibles: {stock}")
                 continue
-            else:
-                cortesias_agregadas.append({
-                    "codigo": codigo,
-                    "nombre": nombre,
-                    "cantidad": cantidad,
-                    "stock_anterior": stock
-                })
-                print(f"✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
-                break
-    if cortesias_agregadas:
-        respuesta = pedir_confirmacion("\n¿Querés eliminar alguno de las cortesías recién agregadas? (si/no): ")
-        if respuesta == "si":
-            print("\nCortesías recién agregadas:")
-            for i, cortesia in enumerate(cortesias_agregadas):
-                print(f"  {i + 1}. Producto: {cortesia['nombre']} (Cód: {cortesia['codigo']}), Cantidad: {cortesia['cantidad']}")
-
-            a_eliminar_str = input("Ingresá los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
             
-            if a_eliminar_str != '0':
-                indices_a_eliminar = set()
-                partes = re.split(r'[,\s]+', a_eliminar_str)
-                for parte in partes:
-                    try:
-                        indice = int(parte) - 1
-                        if 0 <= indice < len(cortesias_agregadas):
-                            indices_a_eliminar.add(indice)
-                        else:
-                            print(f"❌ El número {indice + 1} es inválido. Se ignorará.")
-                    except ValueError:
-                        print(f"❌ La entrada '{parte}' no es un número. Se ignorará.")
+            cortesias.append({
+                "codigo": codigo, "nombre": nombre, "cantidad": cantidad, "stock_anterior": stock
+            })
+            print(f"✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
+            break # Sale del bucle de cantidad
+            
+    return cortesias
 
-                if indices_a_eliminar:
-                    for indice in sorted(list(indices_a_eliminar), reverse=True):
-                        cortesia_eliminada = cortesias_agregadas.pop(indice)
-                        print(f"✔ Cortesía de '{cortesia_eliminada['nombre']}' eliminada.")
-        if not cortesias_agregadas:
-            print("\n❌ No quedaron cortesías para registrar.")
-            return
-    
-        while True:
-            respuesta_autoriza = input("Ingresá quién autoriza la cortesía ó (0) para cancelar: ").strip()
-            if respuesta_autoriza == "0":
-                print("\n❌ Registro de cortesía cancelado.")
-                return
-            if not respuesta_autoriza:
-                print("\n⚠️  El nombre del autorizante no puede estar vacío.")
-                continue
-            autoriza_unidecode = unidecode(respuesta_autoriza)
-            autoriza_limpio = autoriza_unidecode.replace('-', ' ').replace('_', ' ')
-            autoriza = re.sub(r"[^a-zA-Z0-9\s]", "", autoriza_limpio).lower()
-            if not autoriza.strip():
-                print("\n⚠️  El nombre del autorizante no puede contener solo caracteres especiales o signos.")
-                continue
-            break
+def _editar_lista_cortesias(cortesias):
+    # Permite al usuario eliminar elementos de la lista de cortesías.
+    # Devuelve la lista modificada.
 
-    # Finalmente, se guardan las cortesías que quedaron en la lista
-    if cortesias_agregadas:
-        print("\nRegistrando cortesía...")
+    if not cortesias or pedir_confirmacion("\n¿Querés eliminar alguna de las cortesías? (si/no): ") != "si":
+        return cortesias
+
+    print("\nCortesías recién agregadas:")
+    for i, cortesia in enumerate(cortesias):
+        print(f"  {i + 1}. {cortesia['nombre']} (Cód: {cortesia['codigo']}), Cantidad: {cortesia['cantidad']}")
+
+    a_eliminar_str = input("Ingresá los ítems a eliminar (separados por comas/espacios), ó '0' para cancelar: ").strip()
+    if a_eliminar_str == '0':
+        return cortesias
+
+    indices_a_eliminar = set()
+    partes = re.split(r'[,\s]+', a_eliminar_str)
+    for parte in partes:
         try:
-            for cortesia in cortesias_agregadas:
-                fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
-                db.ejecutar("INSERT INTO CORTESIAS (PRODUCTO, CANTIDAD, FECHA, AUTORIZA) VALUES (?, ?, ?, ?)",
-                            (cortesia['codigo'], cortesia['cantidad'], fecha, autoriza))
-                if cortesia['stock_anterior'] != -1:
-                    nuevo_stock = cortesia['stock_anterior'] - cortesia['cantidad']
-                    db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, cortesia['codigo']))
-                marca_tiempo = marca_de_tiempo()
-                log = (
-                    f"[{marca_tiempo}] CONSUMO DE CORTESÍA:\n"
-                    f"Producto: {producto['NOMBRE']} (ID: {producto['CODIGO']}) | "
-                    f"Cantidad: {cantidad} | "
-                    f"Autorizado por: {autoriza.title()} | "
-                    f"Registrado por: {usuarios.sesion.usuario}"
-                )
-                registrar_log("consumos_cortesia.log", log)
-            print(f"\n✔ Cortesía autorizada por {autoriza.capitalize()} registrada correctamente.")
-            for i, cortesia in enumerate(cortesias_agregadas):
-                print(f"  {i + 1}. {cortesia['nombre'].capitalize()}, (x{cortesia['cantidad']})")
-        except Exception as e:
-            print(f"\n❌ Error al registrar la cortesía: {e}")
-    else:
-        print("\n❌ No se registraron nuevas cortesías.")
+            indice = int(parte) - 1
+            if 0 <= indice < len(cortesias):
+                indices_a_eliminar.add(indice)
+            else:
+                print(f"❌ El número {indice + 1} es inválido. Se ignorará.")
+        except ValueError:
+            print(f"❌ La entrada '{parte}' no es un número. Se ignorará.")
 
-    return
+    # Eliminar índices en orden inverso para no afectar las posiciones
+    for indice in sorted(list(indices_a_eliminar), reverse=True):
+        item_eliminado = cortesias.pop(indice)
+        print(f"✔ Cortesía de '{item_eliminado['nombre']}' eliminada.")
+        
+    return cortesias
+
+def _obtener_autorizante():
+    # Solicita y valida el nombre de la persona que autoriza la cortesía.
+    # Devuelve el nombre limpio o None si se cancela.
+
+    while True:
+        respuesta = input("\nIngresá quién autoriza la cortesía ó (0) para cancelar: ").strip()
+        if respuesta == "0":
+            print("\n❌ Registro de cortesía cancelado.")
+            return None
+        if not respuesta:
+            print("\n⚠️  El nombre del autorizante no puede estar vacío.")
+            continue
+
+        # Limpieza del nombre
+        autoriza_limpio = unidecode(respuesta).replace('-', ' ').replace('_', ' ')
+        autoriza_final = re.sub(r"[^a-zA-Z0-9\s]", "", autoriza_limpio).lower()
+        
+        if not autoriza_final.strip():
+            print("\n⚠️  El nombre no puede contener solo caracteres especiales.")
+            continue
+        
+        return autoriza_final
+
+def _guardar_y_registrar_cortesias(cortesias, autoriza):
+    # Guarda las cortesías en la BD, actualiza el stock y escribe en el archivo de log.
+
+    print("\nRegistrando cortesías...")
+    try:
+        for cortesia in cortesias:
+            fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
+            
+            # 1. Insertar en la tabla de CORTESIAS
+            db.ejecutar("INSERT INTO CORTESIAS (PRODUCTO, CANTIDAD, FECHA, AUTORIZA) VALUES (?, ?, ?, ?)",
+                        (cortesia['codigo'], cortesia['cantidad'], fecha, autoriza))
+
+            # 2. Actualizar stock del producto
+            if cortesia['stock_anterior'] != -1:
+                nuevo_stock = cortesia['stock_anterior'] - cortesia['cantidad']
+                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, cortesia['codigo']))
+
+            # 3. Registrar en el archivo de log
+            log = (
+                f"[{marca_de_tiempo()}] CONSUMO DE CORTESÍA:\n"
+                f"Producto: {cortesia['nombre']} (ID: {cortesia['codigo']}) | "
+                f"Cantidad: {cortesia['cantidad']} | "
+                f"Autorizado por: {autoriza.title()} | "
+                f"Registrado por: {usuarios.sesion.usuario}"
+            )
+            registrar_log("consumos_cortesia.log", log)
+
+        print(f"\n✔ Cortesía autorizada por {autoriza.capitalize()} registrada correctamente.")
+        for i, cortesia in enumerate(cortesias):
+            print(f"  {i + 1}. {cortesia['nombre'].capitalize()}, (x{cortesia['cantidad']})")
+
+    except Exception as e:
+        print(f"\n❌ Error al registrar la cortesía: {e}")
+
+@usuarios.requiere_acceso(2)
+def consumo_cortesia():
+    # Coordina el proceso de registrar un consumo de cortesía.
+    # 1. Recolectar productos
+    cortesias_iniciales = _recolectar_cortesias()
+    if not cortesias_iniciales:
+        print("\n❌ No se agregaron productos. Operación finalizada.")
+        return
+
+    # 2. Permitir edición de la lista
+    cortesias_finales = _editar_lista_cortesias(cortesias_iniciales)
+    if not cortesias_finales:
+        print("\n❌ No quedaron cortesías para registrar.")
+        return
+
+    # 3. Obtener autorización
+    autorizante = _obtener_autorizante()
+    if not autorizante:
+        return # Mensaje de cancelación ya mostrado en la función auxiliar
+
+    # 4. Guardar y registrar todo
+    _guardar_y_registrar_cortesias(cortesias_finales, autorizante)

@@ -225,170 +225,141 @@ def _ejecutar_busqueda(criterio, valor):
 def actualizar_producto_db(database, codigo, campo, valor):
     database.ejecutar(f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?", (valor, codigo))
 
-@usuarios.requiere_acceso(2)
-def editar_producto():
-    leyenda_cod = "\nIngresá el código del producto que querés editar, ingrese (*) para ver el listado ó ingrese (0) para cancelar: "
+def _seleccionar_producto_a_editar():
+    # Busca y selecciona un producto para editar.
+    # Devuelve el diccionario del producto o None si se cancela.
+    
+    leyenda = "\nIngresá el código del producto a editar, (*) para ver listado ó (0) para cancelar: "
     while True:
-        respuesta_cod = opcion_menu(leyenda_cod, cero=True, asterisco=True, minimo=1)
-        if respuesta_cod == "*":
+        codigo = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
+        if codigo == 0:
+            return None
+        if codigo == "*":
             listado_productos()
             continue
-        if respuesta_cod == 0:
-            return
 
-        codigo_original = respuesta_cod
-        producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo_original,))
-        if not producto:
+        producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
+        if producto:
+            imprimir_producto(producto)
+            return producto
+        else:
             print("\n⚠️  Producto no encontrado.")
-            continue
-        estado_anterior = {
-            "CODIGO": producto["CODIGO"],
-            "NOMBRE": producto["NOMBRE"],
-            "PRECIO": producto["PRECIO"],
-            "STOCK": producto["STOCK"],
-            "ALERTA": producto["ALERTA"]
-        }
 
-        imprimir_producto(producto)
+def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
+    # Función centralizada que actualiza la BD y registra el cambio en el log.
+
+    codigo_original = producto_original["CODIGO"]
+    try:
+        actualizar_producto_db(db, codigo_original, campo, nuevo_valor)
+
+        log = (
+            f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
+            f"  Estado anterior -> Código: {producto_original['CODIGO']}, "Nombre: {producto_original['NOMBRE']}, "
+            f"Precio: {producto_original['PRECIO']}, Stock: {producto_original['STOCK']}, "
+            f"Alerta: {producto_original['ALERTA']}\n"
+            f"  Campo modificado -> \"{campo}\": {nuevo_valor}"
+        )
+        registrar_log("productos_editados.log", log)
+        print(f"\n✔ {campo.capitalize()} actualizado correctamente.")
+        return True
+    except sqlite3.IntegrityError:
+        print(f"\n❌ No se puede actualizar el {campo.lower()}: tiene consumos o cortesías asociadas.")
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el {campo.lower()}: {e}")
+    return False
+
+def _editar_codigo(producto):
+    # Manejador para la edición del código del producto."""
+    leyenda = "\nIngresá el nuevo código (deje vacío para autogenerar): "
+    while True:
+        nuevo_codigo = opcion_menu(leyenda, vacio=True, minimo=1) # Permite input de texto     
+        if nuevo_codigo is not None: # Si el usuario ingresó un código manualmente
+            if nuevo_codigo != producto["CODIGO"]: #Y es distinto al original
+                existe = db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (nuevo_codigo,))
+                #Y ya existe
+                if existe:
+                    print(f"\n⚠️ El código {nuevo_codigo} ya está en uso. Elija otro.")
+                    continue
+            else:
+                print("\n⚠️ El nuevo código es igual al original. No se realizarán cambios.")
+                return
+            # Si es distinto al original y no existe
+            break
+        else: # Si se dejó vacío para autogenerar
+            ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
+            nuevo_codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
+            while db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (nuevo_codigo,)):
+                nuevo_codigo += 1
+            break
+    _actualizar_y_registrar_log(producto, "CODIGO", nuevo_codigo)
+
+def _editar_nombre(producto):
+    # Manejador para la edición del nombre del producto.
+    while True:
+        nuevo_nombre_raw = input("Ingresá el nuevo nombre: ").strip()
+        if not nuevo_nombre_raw:
+            print("\n⚠️ El nombre no puede estar vacío.")
+            continue
+        
+        nombre_limpio = unidecode(nuevo_nombre_raw).replace('-', ' ').replace('_', ' ')
+        nuevo_nombre = re.sub(r"[^a-zA-Z0-9\s/]", "", nombre_limpio).lower()
+        
+        if not nuevo_nombre.strip():
+            print("\n⚠️ El nombre del producto no puede contener solo caracteres especiales.")
+            continue
+        
+        _actualizar_y_registrar_log(producto, "NOMBRE", nuevo_nombre)
         break
 
-    leyenda_campo = "\n¿Querés editar el código (1), nombre (2), el precio (3), stock (4), alerta de stock (5) ó cancelar (0)? "
+def _editar_precio(producto):
+    #Manejador para la edición del precio del producto.
+    nuevo_precio = pedir_precio("Ingresá el nuevo precio: ")
+    _actualizar_y_registrar_log(producto, "PRECIO", nuevo_precio)
+
+def _editar_stock(producto):
+    # Manejador para la edición del stock del producto.
+    if pedir_confirmacion("¿Desea stock infinito? si/no: ") == "si":
+        nuevo_stock = -1
+    else:
+        nuevo_stock = pedir_entero("Ingresá el nuevo stock: ", minimo=0)
+    _actualizar_y_registrar_log(producto, "STOCK", nuevo_stock)
+
+def _editar_alerta(producto):
+    # Manejador para la edición de la alerta de stock.
+    nueva_alerta = pedir_entero("Ingresá el nuevo nivel de alerta de stock: ", minimo=1)
+    _actualizar_y_registrar_log(producto, "ALERTA", nueva_alerta)
+
+@usuarios.requiere_acceso(2)
+def editar_producto():
+    # Coordina el proceso de edición de un producto.
+
+    producto = _seleccionar_producto_a_editar()
+    if not producto:
+        print("\n❌ Operación cancelada.")
+        return
+
+    # Diccionario de Despacho: mapea opciones a funciones
+    manejadores = {
+        1: _editar_codigo,
+        2: _editar_nombre,
+        3: _editar_precio,
+        4: _editar_stock,
+        5: _editar_alerta,
+    }
+    
+    leyenda = "\n¿Querés editar el código (1), nombre (2), el precio (3), stock (4), alerta de stock (5) ó cancelar (0)?: "
+    
     while True:
-        opcion = opcion_menu(leyenda_campo, cero=True, minimo=1, maximo=5)
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if opcion == 0:
-            return
-        if opcion == 1:
-            leyenda_campo = "\nIngresá el nuevo código del producto (deje vacío para autogenerar): "
-            while True:
-                nuevo_codigo = opcion_menu(leyenda_campo, vacio=True, minimo=1)
-                if nuevo_codigo: # Si hay un código
-                    if nuevo_codigo != codigo_original: # Y es distinto al original
-                        existe = db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (nuevo_codigo,))
-                        #Y existe
-                        if existe:
-                            print(f"\n⚠️  El código {nuevo_codigo} ya está en uso. Elija otro.")
-                            continue
-                    # Si es distinto al original y no existe
-                    codigo = nuevo_codigo
-                    break
-                else: #Si no hay código
-                    ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
-                    nuevo_codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
-                    while db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (nuevo_codigo,)):
-                        nuevo_codigo += 1
-                    codigo = nuevo_codigo
-                    break
-            try:
-                actualizar_producto_db(db, codigo_original, "CODIGO", codigo)
-                marca_tiempo = marca_de_tiempo()
-                log = (
-                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-                    f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
-                    f"Nombre: {estado_anterior['NOMBRE']}, "
-                    f"Precio: {estado_anterior['PRECIO']}, "
-                    f"Stock: {estado_anterior['STOCK']}, "
-                    f"Alerta: {estado_anterior['ALERTA']}\n"
-                    f"Campo modificado -> \"CODIGO\": {nuevo_codigo}"
-                )
-                registrar_log("productos_editados.log", log)
-                print(f"\n✔ Código actualizado de {codigo_original} a {codigo}.")
-            except Exception as e:
-                print(f"\n❌ Error al actualizar el código: {e}")
-            return
-        if opcion == 2:
-            while True:
-                respuesta_nombre = input("Ingresá el nuevo nombre: ").strip()
-                if len(respuesta_nombre) < 1:
-                    print("\n⚠️  El nombre no puede estar vacío.")
-                    continue
-                nombre_unidecode = unidecode(respuesta_nombre)
-                nombre_limpio = nombre_unidecode.replace('-', ' ').replace('_', ' ')
-                nombre = re.sub(r"[^a-zA-Z0-9\s/]", "", nombre_limpio).lower()
-                if not nombre.strip(): # Verifica que el nombre no quede vacío después de la limpieza
-                    print("\n⚠️  El nombre del producto no puede contener solo caracteres o signos.")
-                    continue
-                try:
-                    actualizar_producto_db(db, codigo, "NOMBRE", nombre)
-                    marca_tiempo = marca_de_tiempo()
-                    log = (
-                        f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-                        f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
-                        f"Nombre: {estado_anterior['NOMBRE']}, "
-                        f"Precio: {estado_anterior['PRECIO']}, "
-                        f"Stock: {estado_anterior['STOCK']}, "
-                        f"Alerta: {estado_anterior['ALERTA']}\n"
-                        f"Campo modificado -> \"NOMBRE\": {nombre}"
-                    )
-                    registrar_log("productos_editados.log", log)
-                    print("\n✔ Nombre actualizado.")
-                except Exception as e:
-                    print(f"\n❌ Error al actualizar el nombre: {e}")
-                return
-        elif opcion == 3:
-            respuesta_precio = pedir_precio("Ingresá el nuevo precio: ")
-            try:
-                actualizar_producto_db(db, codigo, "PRECIO", respuesta_precio)
-                marca_tiempo = marca_de_tiempo()
-                log = (
-                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-                    f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
-                    f"Nombre: {estado_anterior['NOMBRE']}, "
-                    f"Precio: {estado_anterior['PRECIO']}, "
-                    f"Stock: {estado_anterior['STOCK']}, "
-                    f"Alerta: {estado_anterior['ALERTA']}\n"
-                    f"Campo modificado -> \"PRECIO\": {respuesta_precio}"
-                )
-                registrar_log("productos_editados.log", log)
-                print("\n✔ Precio actualizado.")
-            except Exception as e:
-                print(f"❌ Error al actualizar el precio: {e}")
-            return
-        elif opcion == 4:
-            if pedir_confirmacion("¿Desea stock infinito? si/no: ") == "si":
-                stock = -1
-            else:
-                stock = pedir_entero("Ingresá el nuevo stock: ", minimo=0)
-            try:
-                actualizar_producto_db(db, codigo, "STOCK", stock)
-                marca_tiempo = marca_de_tiempo()
-                log = (
-                    f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-                    f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
-                    f"Nombre: {estado_anterior['NOMBRE']}, "
-                    f"Precio: {estado_anterior['PRECIO']}, "
-                    f"Stock: {estado_anterior['STOCK']}, "
-                    f"Alerta: {estado_anterior['ALERTA']}\n"
-                    f"Campo modificado -> \"STOCK\": {stock}"
-                )
-                registrar_log("productos_editados.log", log)
-                print("\n✔ Stock actualizado.")
-            except sqlite3.IntegrityError:
-                print("\n❌ No se puede actualizar el stock: tiene consumos o cortesías asociadas.")
-            except Exception as e:
-                print(f"\n❌ Error al actualizar el stock: {e}")
-            return
-        elif opcion == 5:
-            while True:
-                alerta = pedir_entero("Ingresá el nuevo nivel de alerta de stock: ", minimo=1)
-                try:
-                    actualizar_producto_db(db, codigo, "ALERTA", alerta)
-                    marca_tiempo = marca_de_tiempo()
-                    log = (
-                        f"[{marca_tiempo}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-                        f"Estado anterior -> Código: {estado_anterior['CODIGO']}, "
-                        f"Nombre: {estado_anterior['NOMBRE']}, "
-                        f"Precio: {estado_anterior['PRECIO']}, "
-                        f"Stock: {estado_anterior['STOCK']}, "
-                        f"Alerta: {estado_anterior['ALERTA']}\n"
-                        f"Campo modificado -> \"ALERTA\": {alerta}"
-                    )
-                    registrar_log("productos_editados.log", log)
-                    print("\n✔ Alerta de stock actualizada.")
-                except Exception as e:
-                    print(f"\n❌ Error al actualizar la alerta de stock: {e}")
-                return
-        else:
-            print("\n⚠️  Opción inválida.")
+            print("\n❌ Edición cancelada.")
+            break
+        
+        manejador = manejadores.get(opcion)
+        if manejador:
+            manejador(producto)
+            break # Termina después de una edición exitosa
+        # El else para opción inválida ya lo maneja 'opcion_menu' o el bucle.
 
 @usuarios.requiere_acceso(2)
 def eliminar_producto():
