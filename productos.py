@@ -254,7 +254,7 @@ def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
 
         log = (
             f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-            f"  Estado anterior -> Código: {producto_original['CODIGO']}, "Nombre: {producto_original['NOMBRE']}, "
+            f"Estado anterior -> Código: {producto_original['CODIGO']}, Nombre: {producto_original['NOMBRE']}, "
             f"Precio: {producto_original['PRECIO']}, Stock: {producto_original['STOCK']}, "
             f"Alerta: {producto_original['ALERTA']}\n"
             f"  Campo modificado -> \"{campo}\": {nuevo_valor}"
