@@ -60,7 +60,6 @@ def reporte_abiertos():
     if huespedes:
         print("\nHuéspedes abiertos:\n")
         imprimir_huespedes(huespedes)
-        input("\nPresione Enter para continuar...")
         return
     else:
         print("\n❌ No se hallaron huéspedes abiertos")

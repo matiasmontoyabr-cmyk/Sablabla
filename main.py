@@ -1,6 +1,12 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
 
+#Armar el script con el stock para cargar de una
+
+#¿Se puede aumentar el tamaño de la fuente?
+
+#Por qué algunos iconos necesitan doble espacio, porque sino se pegan demaciado al texto y cómo solucionarlo?
+
 #Revisar errores por acceso posicional
 
 #Aplicar pedir_nombre() en editar_huesped() y demás
@@ -51,8 +57,7 @@ def usuarios_existe():
         contraseña = "administrador"
         contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt())
         try:
-            db.ejecutar("INSERT INTO USUARIOS (USUARIO, CONTRASEÑA_HASH, NIVEL_DE_ACCESO) VALUES (?, ?, ?)", 
-                        (usuario, contraseña_hash, 3))
+            db.ejecutar("INSERT INTO USUARIOS (USUARIO, CONTRASEÑA_HASH, NIVEL_DE_ACCESO) VALUES (?, ?, ?)", (usuario, contraseña_hash, 3))
         except sqlite3.IntegrityError:
             print("\n❌ Error: No se pudo crear un Superusuario.")
 
@@ -128,7 +133,7 @@ def inicio():
             gestionar_usuarios()
 
 def gestionar_huespedes():
-    leyenda = "\n1. ➕ Registrar nuevo huesped\n2. ⁐ Cerrar habitación\n3. 🔍 Buscar un huesped\n4. ⭾ Cambiar el estado de un huesped\n5. ✏️ Editar huesped\n6. ️️🗑️ Eliminar un huesped\n7. ㏒ Ver registro\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de huéspedes:\n1. ➕ Registrar nuevo huesped\n2. ⁐ Cerrar habitación\n3. 🔍 Buscar un huesped\n4. ⭾ Cambiar el estado de un huesped\n5. ✏️ Editar huesped\n6. ️️🗑️ Eliminar un huesped\n7. ㏒ Ver registro\n0. ⮐ Volver al inicio\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
         if respuesta == 1:
@@ -149,7 +154,7 @@ def gestionar_huespedes():
             return
 
 def gestionar_consumos():
-    leyenda = "\n1. ➕ Agregar consumo\n2. 🔍 Ver consumos\n3. ️️🗑️ Eliminar consumos\n4. 💸 Registrar pago\n5. 🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de consumos\n1. ➕ Agregar consumo\n2. 🔍 Ver consumos\n3. ️️🗑️ Eliminar consumos\n4. 💸 Registrar pago\n5. 🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if respuesta == 1:
@@ -166,7 +171,7 @@ def gestionar_consumos():
             return
 
 def gestionar_productos():
-    leyenda = "\n1. ➕ Agregar producto\n2. 🔍 Buscar productos\n3. 📋 Listado de productos\n4. ✏️  Editar producto\n5. ️️🗑️  Eliminar producto\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de productos\n1. ➕ Agregar producto\n2. 🔍 Buscar productos\n3. 📋 Listado de productos\n4. ✏️  Editar producto\n5. ️️🗑️  Eliminar producto\n0. ⮐ Volver al inicio\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if respuesta == 1:
@@ -183,7 +188,7 @@ def gestionar_productos():
             return
 
 def gestionar_inventario():
-    leyenda = "\n1. 📦 Abrir inventario\n2. ➕ Ingresar compra\n3. ✏️ Editar inventario\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de inventario:\n1. 📦 Abrir inventario\n2. ➕ Ingresar compra\n3. ✏️ Editar inventario\n0. ⮐ Volver al inicio\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=3)
         if respuesta == 1:
@@ -196,7 +201,7 @@ def gestionar_inventario():
             return
 
 def gestionar_reportes():
-    leyenda = "\n1. 📋 Generar reporte de consumos diarios\n2. 🧘 Generar reporte de pasajeros abiertos\n3. ⁐ Generar reporte de pasajeros cerrados\n4. 📆 Generar reporte de pronto checkin\n5. 📦 Generar reporte de inventario\n6. 📅 Generar reporte de ocupación\n7. ㏒ Ver logs\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de reportes\n1. 📋 Generar reporte de consumos diarios\n2. 🧘 Generar reporte de pasajeros abiertos\n3. ⁐ Generar reporte de pasajeros cerrados\n4. 📆 Generar reporte de pronto checkin\n5. 📦 Generar reporte de inventario\n6. 📅 Generar reporte de ocupación\n7. ㏒ Ver logs\n0. ⮐ Volver al inicio\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
         if respuesta == 1:

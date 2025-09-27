@@ -90,6 +90,10 @@ def pedir_fecha_valida(mensaje, allow_past=False):
                 if len(partes) != 3:
                     raise ValueError("\n❌ Número incorrecto de partes en la fecha.")
                 dia, mes, anio = map(int, partes)
+                if anio < 100:
+                    # Asume que cualquier año de dos dígitos (ej: 25) es del siglo 21 (2025)
+                    # Esto es seguro para un sistema de reservas moderno.
+                    anio += 2000
                 fecha = date(anio, mes, dia)
             except ValueError as e:
                 print(f"\n❌ Formato de fecha inválido o fecha no existente: {e}. Ingresá una fecha como 07-05-2025 o 07052025.")
@@ -142,7 +146,7 @@ def opcion_menu(leyenda, cero=False, vacio=False, asterisco=False, minimo=None, 
     # Retorna el entero validado, 0 si se permite y elige cancelar, o None si se permite vacío.
 
     while True:
-        entrada = input(f"{leyenda} ").strip()
+        entrada = input(f"{leyenda}").strip()
 
         # 1. Validar entrada vacía (Enter)
         if not entrada:
@@ -353,7 +357,7 @@ def imprimir_producto(producto):
         "PINMEDIATO": "PINMEDIATO"
     }
     for col_key, col_display in columnas_a_mostrar.items():
-        val = producto.get(col_key) # Usamos .get() para evitar errores si la clave no existe
+        val = producto[col_key]
         display_val = val
         
         if col_key == "NOMBRE":

@@ -32,18 +32,23 @@ class DBManager:
     # si se usa el context manager de la conexión.
     
     def obtener_uno(self, query, params=()):
-        """Ejecuta una consulta y devuelve un resultado."""
+        # Ejecuta una consulta y devuelve un único resultado como diccionario (dict).
         if self._conn is None: self.abrir_conexion()
         cursor = self._conn.cursor() # Crea un nuevo cursor por consulta
         cursor.execute(query, params)
-        return cursor.fetchone()
+        fila = cursor.fetchone()
+        if fila:
+            return dict(fila)
+        else:
+            return None
 
     def obtener_todos(self, query, params=()):
-        """Ejecuta una consulta y devuelve todos los resultados."""
+        # Ejecuta una consulta y devuelve todos los resultados como lista de diccionarios
         if self._conn is None: self.abrir_conexion()
         cursor = self._conn.cursor() # Crea un nuevo cursor por consulta
         cursor.execute(query, params)
-        return cursor.fetchall()
+        filas = cursor.fetchall()
+        return [dict(fila) for fila in filas]
     
     def cerrar(self):
         """Cierra la conexión si está abierta."""

@@ -84,7 +84,7 @@ def _procesar_un_producto(producto, huesped_numero):
             else:
                 print("\n⚠️  El consumo se registrará como pendiente de pago.")
 
-        print(f"\n✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
+        print(f"\n✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre.capitalize()}'.")
         return {
             "huesped_id": huesped_numero,
             "codigo": producto["CODIGO"],
@@ -134,7 +134,6 @@ def _editar_consumos_agregados(consumos):
 def _guardar_consumos_en_db(consumos, huesped):
     # Guarda la lista final de consumos en la base de datos, actualizando stock y registro.
 
-    print("\n✔ Registrando consumos en la base de datos...")
     numero_huesped = huesped["NUMERO"]
     try:
         for consumo in consumos:
@@ -214,12 +213,14 @@ def ver_consumos():
 
             for idx, consumo in enumerate(consumos, start=1):
                 fecha = consumo["FECHA"]
-                producto_nombre = consumo["PRODUCTO"]
+                producto_nombre = consumo["NOMBRE"].capitalize()
                 cantidad = consumo["CANTIDAD"]
                 precio = consumo["PRECIO"]
                 fecha_display = formatear_fecha(fecha)
                 item_total = cantidad * precio # Calcular el total por item
                 grand_total += item_total # Acumular al total general
+                if len(producto_nombre) > 30:
+                    producto_nombre = producto_nombre[:27] + '...'
                 # Modificación: Imprimir el precio total por item
                 print(f"{idx:<3} {fecha_display:<20} {producto_nombre:<30} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f}")
             print("-" * 90) # Línea separadora antes del total
@@ -490,7 +491,6 @@ def _obtener_autorizante():
 def _guardar_y_registrar_cortesias(cortesias, autoriza):
     # Guarda las cortesías en la BD, actualiza el stock y escribe en el archivo de log.
 
-    print("\nRegistrando cortesías...")
     try:
         for cortesia in cortesias:
             fecha = datetime.now().isoformat(sep=" ", timespec="seconds")

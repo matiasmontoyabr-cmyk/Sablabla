@@ -71,7 +71,7 @@ def nuevo_huesped():
             APELLIDO, NOMBRE, TELEFONO, EMAIL, APP, ESTADO,
             CHECKIN, CHECKOUT, DOCUMENTO, HABITACION,
             CONTINGENTE, REGISTRO
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         valores = (data["apellido"],data["nombre"], data["telefono"], data["email"], data["aplicativo"],
             data["estado"], data["checkin"], data["checkout"], data["documento"],

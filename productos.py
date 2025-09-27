@@ -7,19 +7,33 @@ from utiles import pedir_precio, pedir_entero, pedir_confirmacion, imprimir_prod
 
 @usuarios.requiere_acceso(1)
 def nuevo_producto():
+    codigo = None
     leyenda = "\nIngresá el código de producto, deje vacio para autogenerar, ó (0) para cancelar : "
-    while True:
+    while codigo is None:
         respuesta_codigo = opcion_menu(leyenda, cero=True, vacio=True, minimo=1)
-        try:
-            if respuesta_codigo == 0:
-                return
-            if not respuesta_codigo:
-                ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
-                codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
-            break # Exit the loop after finding a valid code
-        except Exception as e:
-            print(f"❌ Error al procesar el código: {e}")
-            continue
+
+        if respuesta_codigo == 0:
+            return #Cancelado
+        # --- A. Autogenerar (Si está vacío) ---
+        if respuesta_codigo is None:
+            ultimo = db.obtener_uno("SELECT MAX(CODIGO) FROM PRODUCTOS")
+            codigo = (ultimo["MAX(CODIGO)"] or 0) + 1
+            # Nota: Aquí falta la validación de duplicado por autogeneración, 
+            # pero el código ya lo hace en el bloque 'else' original.
+        
+        # --- B. Código Ingresado (Es un entero > 0) ---
+        elif isinstance(respuesta_codigo, int):
+            # opcion_menu garantiza que es un entero >= 1.
+            # No hay necesidad de try/except si opcion_menu hace su trabajo.
+            codigo = respuesta_codigo
+            
+            # ⚠️ Opcional: Validar si el código ya existe
+            existe = db.obtener_uno("SELECT 1 FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
+            if existe:
+                print(f"\n⚠️ El código {codigo} ya está en uso. Elija otro.")
+                codigo = None # Reinicia el bucle forzando a 'codigo' a ser None
+                continue
+        break # Exit the loop after finding a valid code
 
     while True:
         respuesta_nombre = input("Escriba el nombre del producto ó (0) para cancelar: ").strip()
@@ -256,7 +270,7 @@ def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
             f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
             f"Estado anterior -> Código: {producto_original['CODIGO']}, Nombre: {producto_original['NOMBRE']}, "
             f"Precio: {producto_original['PRECIO']}, Stock: {producto_original['STOCK']}, "
-            f"Alerta: {producto_original['ALERTA']}\n"
+            f"Alerta: {producto_original['ALERTA']}\n, P.Inmediato: {producto_original['PINMEDIATO']}"
             f"  Campo modificado -> \"{campo}\": {nuevo_valor}"
         )
         registrar_log("productos_editados.log", log)
@@ -329,10 +343,14 @@ def _editar_alerta(producto):
     nueva_alerta = pedir_entero("Ingresá el nuevo nivel de alerta de stock: ", minimo=1)
     _actualizar_y_registrar_log(producto, "ALERTA", nueva_alerta)
 
+def _editar_pinmediato(producto):
+    # Manejador para la edición del pago inmediato.
+    nuevo_pinmediato = pedir_confirmacion(f"¿Querés que el producto {producto["NOMBRE"]} tenga pago inmediato? : ", defecto = "no").upper
+    _actualizar_y_registrar_log(producto, "PINMEDIATO", nuevo_pinmediato)
+
 @usuarios.requiere_acceso(2)
 def editar_producto():
     # Coordina el proceso de edición de un producto.
-
     producto = _seleccionar_producto_a_editar()
     if not producto:
         print("\n❌ Operación cancelada.")
@@ -345,12 +363,13 @@ def editar_producto():
         3: _editar_precio,
         4: _editar_stock,
         5: _editar_alerta,
+        6: _editar_pinmediato
     }
     
-    leyenda = "\n¿Querés editar el código (1), nombre (2), el precio (3), stock (4), alerta de stock (5) ó cancelar (0)?: "
+    leyenda = "\n¿Querés editar (1) el código, (2) nombre, (3) el precio, (4) stock, (5) alerta de stock, (6) pago inmediato ó cancelar (0)?: "
     
     while True:
-        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=6)
         if opcion == 0:
             print("\n❌ Edición cancelada.")
             break
