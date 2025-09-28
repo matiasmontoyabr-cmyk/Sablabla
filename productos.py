@@ -96,62 +96,6 @@ def listado_productos():
         return
 
 @usuarios.requiere_acceso(0)
-def buscar_producto_b():
-    while True:
-        criterio = input("\nIngresá el nombre o código del producto, (*) para ver todos, ó (0) para cancelar: ").strip()
-        if not criterio:
-            print("\n⚠️  Debe ingresar al menos un número o una palabra para buscar.")
-            continue
-        elif criterio == "0":
-            return
-        elif criterio == "*":
-            productos = db.obtener_todos("SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS")
-            if not productos:
-                print("\n❌ No hay productos registrados.")
-                return
-            imprimir_productos(productos)
-            return
-        elif criterio.isdigit():
-            codigo = int(criterio)
-            query = "SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?"
-            producto = db.obtener_uno(query, (codigo,))
-            if not producto:
-                print("\n⚠️  No se encontró un producto con ese código.")
-                continue
-            else:
-                imprimir_producto(producto)
-                return
-        else:
-            try:
-                criterio_limpio = re.sub(r"[^a-zA-Z0-9\s/]", "", unidecode(criterio).lower().replace('-', ' ').replace('_', ' ').replace('/', ' '))
-                criterios = criterio_limpio.split()
-                if not criterios:
-                    print("\n⚠️  Debe ingresar al menos una palabra")
-                    continue
-                else:
-                    where_clauses = ["LOWER(NOMBRE) LIKE ?"] * len(criterios)
-                    params = [f"%{palabra}%" for palabra in criterios]
-
-                    query = f"SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE {' OR '.join(where_clauses)}"
-                    productos = db.obtener_todos(query, params)
-
-                    # Ordenar por relevancia (cantidad de palabras que coinciden en el nombre)
-                    resultados = [(prod, sum(1 for palabra in criterios if palabra in prod["NOMBRE"].lower())) for prod in productos]
-                    resultados.sort(key=lambda x: x[1], reverse=True)
-
-                    if resultados:
-                        print(f"\nResultados para: '{criterio}'\n")
-                        productos_ordenados = [p for p, _ in resultados]
-                        imprimir_productos(productos_ordenados)
-                        return
-                    else:
-                        print("\n❌ No se encontraron productos que coincidan con la búsqueda.")
-                        return
-            except Exception as e:
-                # Si algo sale mal, imprime el error y sigue el programa
-                print(f"\n❌ Error al realizar la búsqueda: {e}")
-
-@usuarios.requiere_acceso(0)
 def buscar_producto():
     opcion = None
     while True:
@@ -204,7 +148,7 @@ def buscar_producto():
         criterios = criterio_limpio.split()
         resultados = _ejecutar_busqueda("nombre", criterios)
 
-    # 3. Mostrar resultados y decidir si continuar
+    # 3. Mostrar resultados
     if resultados:
         imprimir_productos(resultados)
         return

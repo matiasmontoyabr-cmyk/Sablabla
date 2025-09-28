@@ -203,10 +203,18 @@ def reporte_ocupacion():
 
 @usuarios.requiere_acceso(2)
 def ver_logs():
-    leyenda = "\n¿Qué log querés ver?\n1. Consumos de cortesía\n2. Consumos eliminados\n3. Huéspedes cerrados\n4. Huéspedes eliminados\n5. Productos editados \nó 0. Cancelar"
-    logs = {1: "consumos_cortesia.log", 2: "consumos_eliminados.log", 3: "huespedes_cerrados.log", 4:  "huespedes_eliminados.log", 5: "productos_editados.log"}
+    leyenda = "\n¿Qué log querés ver?\n1. Consumos de cortesía\n2. Consumos eliminados\n3. Huéspedes cerrados\n4. Huéspedes eliminados\n5. Productos editados\n6. Check-ins realizados\nó 0. Cancelar"
+    
+    logs = {
+        1: "consumos_cortesia.log", 
+        2: "consumos_eliminados.log", 
+        3: "huespedes_cerrados.log", 
+        4: "huespedes_eliminados.log", 
+        5: "productos_editados.log",
+        6: "checkins.log" 
+    }
     while True:
-        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=6)
         if opcion == 0:
             return
         elif opcion in logs:

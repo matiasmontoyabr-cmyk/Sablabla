@@ -28,7 +28,7 @@ import sqlite3
 import traceback
 from consumos import agregar_consumo, ver_consumos, eliminar_consumos, registrar_pago, consumo_cortesia
 from db import db
-from huespedes import nuevo_huesped, cerrar_habitacion, buscar_huesped, ver_registro, cambiar_estado, editar_huesped, eliminar_huesped
+from huespedes import nuevo_huesped, cerrar_habitacion, buscar_huesped, ver_registro, cambiar_estado, editar_huesped, eliminar_huesped, realizar_checkin
 from inventario import abrir_inventario, ingresar_compra, editar_inventario
 from productos import nuevo_producto, buscar_producto, listado_productos, editar_producto, eliminar_producto
 from reportes import reporte_diario, reporte_abiertos, reporte_cerrados, reporte_pronto_checkin, reporte_inventario, reporte_ocupacion, ver_logs
@@ -133,22 +133,24 @@ def inicio():
             gestionar_usuarios()
 
 def gestionar_huespedes():
-    leyenda = "\nGestión de huéspedes:\n1. ➕ Registrar nuevo huesped\n2. ⁐ Cerrar habitación\n3. 🔍 Buscar un huesped\n4. ⭾ Cambiar el estado de un huesped\n5. ✏️ Editar huesped\n6. ️️🗑️ Eliminar un huesped\n7. ㏒ Ver registro\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de huéspedes:\n1. ➕ Registrar nuevo huesped\n2. ✅ Realizar checkin\n 3. 👋 Cerrar habitación\n4. 🔍 Buscar un huesped\n5. ✏️ Editar huesped\n6. ⭾ Cambiar el estado de un huesped\n7. ️️🗑️ Eliminar un huesped\n8. ㏒ Ver registro\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=8)
         if respuesta == 1:
             nuevo_huesped()
         elif respuesta == 2:
-            cerrar_habitacion()
+            realizar_checkin()
         elif respuesta == 3:
-            buscar_huesped()
+            cerrar_habitacion()
         elif respuesta == 4:
-            cambiar_estado()
+            buscar_huesped()
         elif respuesta == 5:
             editar_huesped()
         elif respuesta == 6:
-            eliminar_huesped()
+            cambiar_estado()
         elif respuesta == 7:
+            eliminar_huesped()
+        elif respuesta == 8:
             ver_registro()
         elif respuesta == 0:
             return
