@@ -9,9 +9,9 @@ from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huesp
 @usuarios.requiere_acceso(1)
 def nuevo_huesped():
     estado = None
-    documento = 0
+    documento = "0"
     telefono = 0
-    email = 0
+    email = "0"
     leyenda = "\n¿Querés agregar un huesped programado (1), un checkin (2) o cancelar (0)?: "
     while True:
         pregunta_estado = opcion_menu(leyenda, cero=True, minimo=1, maximo=2)
@@ -85,6 +85,48 @@ def nuevo_huesped():
     print("\n✔ Huésped registrado correctamente.")
     return
 
+def _pedir_datos(huesped):
+    # Pide teléfono, email y/o documento si los valores son None, 0 o "".
+    # Retorna un diccionario con los updates a aplicar.
+    
+    updates = {}
+    
+    # 1. DOCUMENTO
+    # Si el documento es None, "0", o una cadena vacía, lo solicitamos.
+    documento_actual = str(huesped["DOCUMENTO"] or "").strip()
+    if not documento_actual or documento_actual == "0":
+        while True:
+            documento = input("Ingresá el número de documento del huésped: ").strip()
+            if not documento: 
+                print("\n⚠️ El documento no puede estar vacío.")
+                continue
+            updates["DOCUMENTO"] = documento
+            break
+    else:
+        updates["DOCUMENTO"] = documento_actual
+
+    # 2. TELÉFONO
+    # Si el teléfono es None, 0, o una cadena vacía, lo solicitamos.
+    telefono_actual = str(huesped["TELEFONO"] or "").strip()
+    if not telefono_actual or telefono_actual == "0":
+        telefono = pedir_telefono("Ingresá un whatsapp de contacto : ")
+        if telefono:
+            updates["TELEFONO"] = telefono
+    else:
+        updates["TELEFONO"] = telefono_actual
+
+    # 3. EMAIL
+    # Si el email es None, "0", o una cadena vacía, lo solicitamos.
+    email_actual = str(huesped["EMAIL"] or "").strip()
+    if not email_actual or email_actual == "0":
+        email = pedir_mail("Ingresá un email de contacto (o Enter para omitir): ")
+        if email:
+            updates["EMAIL"] = email
+    else:
+        updates["EMAIL"] = email_actual
+
+    return updates
+
 @usuarios.requiere_acceso(1)
 def realizar_checkin():
     # Muestra huéspedes programados para hoy y mañana
@@ -140,35 +182,8 @@ def realizar_checkin():
             return
         
         # --- Recolección de datos y actualización ---
-        updates = {}
+        datos_recopilados = _pedir_datos(huesped)
         
-        # 1. DOCUMENTO
-        documento_actual = str(huesped["DOCUMENTO"] or "").strip()
-        if not documento_actual or documento_actual == "0":
-            while True:
-                documento = input("Ingresá el número de documento del huésped: ").strip()
-                if not documento: 
-                    print("\n⚠️ El documento no puede estar vacío.")
-                    continue
-                updates["DOCUMENTO"] = documento
-                break
-        else:
-            updates["DOCUMENTO"] = documento_actual
-
-        # 2. TELÉFONO
-        telefono_actual = str(huesped["TELEFONO"] or "").strip()
-        if not telefono_actual or telefono_actual == "0":
-            telefono = pedir_telefono("Ingresá un whatsapp de contacto: ")
-            if telefono:
-                updates["TELEFONO"] = telefono
-
-        # 3. EMAIL
-        email_actual = str(huesped["EMAIL"] or "").strip()
-        if not email_actual or email_actual == "0":
-            email = pedir_mail("Ingresá un email de contacto: ")
-            if email:
-                updates["EMAIL"] = email
-
         # Preparar la actualización
         registro_anterior = str(huesped["REGISTRO"] or "")
         separador = "\n---\n"
@@ -181,6 +196,7 @@ def realizar_checkin():
             "CHECKIN": hoy,
             "REGISTRO": nuevo_registro
         }
+        updates.update(datos_recopilados)
 
         try:
             editar_huesped_db(numero, updates)
@@ -201,7 +217,7 @@ def realizar_checkin():
             return
 
 @usuarios.requiere_acceso(1)
-def cerrar_habitacion():
+def realizar_checkout():
     leyenda = "\nIngresá el número de habitación a cerrar, (*) para buscar ó (0) para cancelar: "
     while True:
         habitacion = opcion_menu(leyenda, cero=True, minimo=1, maximo=7,)
@@ -217,10 +233,7 @@ def cerrar_habitacion():
                 print(f"{'HAB':<5} {'APELLIDO':<20} {'NOMBRE':<20}")
                 print("-" * 45)
                 for huesped in abiertas:
-                    hab = huesped["HABITACION"]
-                    ape = huesped["APELLIDO"]
-                    nom = huesped["NOMBRE"]
-                    print(f"{hab:<5} {ape:<20} {nom:<20}")
+                    print(f"{huesped["HABITACION"]:<5} {huesped["APELLIDO"]:<20} {huesped["NOMBRE"]:<20}")
                 print("-" * 45)
             continue
 
@@ -236,75 +249,39 @@ def cerrar_habitacion():
         separador = "\n---\n"
         registro_anterior = str(huesped["REGISTRO"] or "")
 
-        # Verificar consumos impagos
-        query = """
-            SELECT C.CANTIDAD, P.PRECIO
-            FROM CONSUMOS C
-            JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
-            WHERE C.HUESPED = ? AND C.PAGADO = 0
-        """
-        consumos_no_pagados = db.obtener_todos(query, (numero,))
-        total_pendiente = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados)
+        checkout_ok, registro_actualizado, total_pendiente = _verificar_consumos_impagos(numero, registro_anterior)
 
-        if consumos_no_pagados:
-            print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
-            respuesta_pago = pedir_confirmacion("\n⚠️¿Querés marcar estos consumos como pagados? (si/no): ")
-            if respuesta_pago == "si":
-                try:
-                    db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero,))
-                    marca_tiempo = marca_de_tiempo()
-                    registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {marca_tiempo}"
-                    nuevo_registro = registro_anterior + separador + registro_pago
-                    editar_huesped_db(numero, {"REGISTRO": nuevo_registro})
-                    print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
-                except Exception as e:
-                    print(f"\n❌ Error al marcar consumos como pagados: {e}")
-            else:
-                confirmar_cierre = pedir_confirmacion("\n⚠️  ¿Querés cerrar la habitación aun con consumos impagos? (si/no): ")
-                if confirmar_cierre != "si":
-                    print("\n❌ Cierre cancelado.")
-                    return
-        else:
-            print("\n✔ No hay consumos pendientes de pago para esta habitación.")
+        if not checkout_ok:
+            # El checkout fue cancelado
+            return
 
-        # Releer el registro actualizado de la base antes de cerrar
-        registro_anterior = str(huesped["REGISTRO"] or "")
-        separador = "\n---\n"
-
+        #CERRAR HABITACIÓN
         registro_nuevo = f"Estado modificado a CERRADO - {marca_de_tiempo()}"
-        if registro_anterior.strip():
-            registro = registro_anterior + separador + registro_nuevo
-        else:
-            registro = registro_nuevo
 
-        updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro}
+        # Usamos el registro_actualizado que puede o no tener la nota de pago/advertencia
+        if registro_actualizado.strip():
+            registro_final = registro_actualizado + separador + registro_nuevo
+        else:
+            registro_final = registro_nuevo
+        
+        updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro_final}
 
         try:
             editar_huesped_db(numero, updates)
-            # Construir log de cierre
-            marca_tiempo = marca_de_tiempo()
-            # Obtener información previa del huésped para el log
-            huesped_data = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-            if huesped_data:
-                nombre = huesped_data["NOMBRE"]
-                apellido = huesped_data["APELLIDO"]
-                habitacion = huesped_data["HABITACION"]
-                estado_anterior = huesped_data["ESTADO"]
-                registro_anterior = huesped_data["REGISTRO"]
-            else:
-                nombre = apellido = "Desconocido"
-                habitacion = estado_anterior = registro_anterior = "?"
+            
+            # 5. LOG DE AUDITORÍA
             log = (
-                f"[{marca_tiempo}] HUÉSPED CERRADO:\n"
-                f"Nombre: {nombre} {apellido} | Habitación: {habitacion} | Estado anterior: {estado_anterior}\n"
-                f"Total de consumos no pagados al momento del cierre: R {total_pendiente:.2f}\n"
-                f"Registro previo:\n{registro_anterior.strip()}"
+                f"[{marca_de_tiempo()}] HUÉSPED CERRADO:\n"
+                f"Nombre: {huesped['NOMBRE']} {huesped['APELLIDO']} | Habitación: {habitacion}\n"
+                f"Total de consumos no pagados al momento del cierre: R {total_pendiente:.2f}\n" 
                 f"Acción realizada por: {usuarios.sesion.usuario}"
             )
             registrar_log("huespedes_cerrados.log", log)
-            print(f"\n✔ Habitación {habitacion} cerrada correctamente.")
+            print(f"\n✔ Checkout de Habitación {habitacion} realizado correctamente.")
+            
         except Exception as e:
-            print(f"\n❌ Error al cerrar la habitación: {e}")
+            print(f"\n❌ Error al realizar el checkout: {e}")
+            
         return
 
 @usuarios.requiere_acceso(0)
@@ -617,40 +594,13 @@ def _actualizar_a_abierto(numero, registro_anterior, separador):
         return False
     hoy = date.today().isoformat()
     
-    updates = {}
-    # DOCUMENTO
-    documento_actual = str(huesped_actual["DOCUMENTO"] or "").strip()
-    if not documento_actual or documento_actual == "0":
-        while True:
-            documento = input("Ingresá el número de documento del huésped: ").strip()
-            if not documento: 
-                print("\n⚠️ El documento no puede estar vacío.")
-                continue
-            updates["DOCUMENTO"] = documento
-            break
-    else:
-        updates["DOCUMENTO"] = documento_actual
-
-    # TELÉFONO
-    telefono_actual = str(huesped_actual["TELEFONO"] or "").strip()
-    if not telefono_actual or telefono_actual == "0":
-        telefono = pedir_telefono("Ingresá un whatsapp de contacto: ")
-        if telefono:
-            updates["TELEFONO"] = telefono
-
-    # EMAIL
-    email_actual = str(huesped_actual["EMAIL"] or "").strip()
-    if not email_actual or email_actual == "0":
-        email = pedir_mail("Ingresá un email de contacto: ")
-        if email:
-            updates["EMAIL"] = email
-
     # 1. Adquisición y validación de datos
+        # RECOLECCIÓN DE DATOS FALTANTES
+    datos_contacto_updates = _pedir_datos(huesped_actual)
     checkout = pedir_fecha_valida("Ingresá la fecha de checkout (DD-MM-YYYY): ")
     while checkout < hoy:
         print("\n⚠️  La fecha de checkout no puede ser anterior al checkin (hoy).")
         checkout = pedir_fecha_valida("Ingresá la fecha de checkout nuevamente (DD-MM-YYYY): ")
-    documento = input("Ingersá el número de documento: ").strip()
     contingente = pedir_entero("Ingresá la cantidad de huéspedes: ", minimo=1, maximo=4)
     habitacion = pedir_habitación(hoy, checkout, contingente, numero)
     
@@ -660,9 +610,12 @@ def _actualizar_a_abierto(numero, registro_anterior, separador):
 
     updates = {
         "ESTADO": "ABIERTO", "CHECKIN": hoy, "CHECKOUT": checkout, 
-        "DOCUMENTO": documento, "HABITACION": habitacion,
-        "CONTINGENTE": contingente, "REGISTRO": registro
+        "HABITACION": habitacion, "CONTINGENTE": contingente,
+        "REGISTRO": registro
     }
+
+    # Agregar los datos de contacto/documento recopilados al diccionario updates
+    updates.update(datos_contacto_updates) 
     
     # 3. Ejecución y manejo de errores
     try:
@@ -738,6 +691,70 @@ def _actualizar_a_cerrado(numero, registro_anterior, separador):
     except Exception as e:
         print(f"\n❌ Error al cerrar el huésped: {e}")
         return False
+
+def _verificar_consumos_impagos(numero_huesped, registro_actual):
+    # Verifica consumos impagos para un huésped, maneja el pago y la confirmación
+    # de cierre. Retorna (True, registro_actualizado) si el checkout puede continuar, 
+    # (False, None) si se cancela el checkout.
+
+    separador = "\n---\n"
+    
+    # 1. Verificar consumos impagos
+    query = """
+        SELECT C.CANTIDAD, P.PRECIO
+        FROM CONSUMOS C
+        JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
+        WHERE C.HUESPED = ? AND C.PAGADO = 0
+    """
+    consumos_no_pagados = db.obtener_todos(query, (numero_huesped,))
+    total_pendiente = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados)
+
+    if not consumos_no_pagados:
+        print("\n✔ No hay consumos pendientes de pago para esta habitación.")
+        return True, registro_actual, total_pendiente # Se devuelve el total para el log
+    
+    # 2. Consumos pendientes
+    print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
+    
+    respuesta_pago = pedir_confirmacion("\n⚠️ ¿Querés marcar estos consumos como pagados? (si/no): ")
+    
+    if respuesta_pago == "si":
+        try:
+            # Marcar consumos como pagados
+            db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero_huesped,))
+            
+            # Actualizar registro del huésped
+            marca_tiempo = marca_de_tiempo()
+            registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {marca_tiempo}"
+            nuevo_registro = registro_actual + separador + registro_pago
+            editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
+            
+            print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
+            return True, nuevo_registro, total_pendiente
+        
+        except Exception as e:
+            print(f"\n❌ Error al marcar consumos como pagados: {e}")
+            # Se devuelve True para permitir que el checkout continúe si el error no es crítico,
+            # pero es más seguro cancelar si el pago falló.
+            print("\n❌ Cierre cancelado debido a un error de pago.")
+            return False, None, total_pendiente 
+            
+    else:
+        # Preguntar si desea cerrar aun con deuda
+        confirmar_cierre = pedir_confirmacion("\n⚠️ ¿Querés cerrar la habitación aun con consumos impagos? (si/no): ")
+        if confirmar_cierre != "si":
+            print("\n❌ Cierre cancelado.")
+            return False, None, total_pendiente
+            
+        # Registra la acción de cierre con deuda
+        marca_tiempo = marca_de_tiempo()
+        registro_impago = f"ADVERTENCIA: Habitación cerrada con consumos pendientes por un total de R{total_pendiente:.2f} - {marca_tiempo}"
+        nuevo_registro_con_adv = registro_actual + separador + registro_impago
+        
+        print(f"\n✅ Habitación marcada para cierre. Se ha registrado la deuda pendiente (R {total_pendiente:.2f}).")
+        
+        # Se devuelve True y el registro con la advertencia
+        return True, nuevo_registro_con_adv, total_pendiente
 
 def editar_huesped_db(numero, updates_dict):
     """
