@@ -628,43 +628,22 @@ def _actualizar_a_abierto(numero, registro_anterior, separador):
 
 def _actualizar_a_cerrado(numero, registro_anterior, separador):
     # Maneja la lógica para cambiar el estado a CERRADO."""
+    # Obtiene el huesped actual para el log si es necesario
+    huesped_data = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+    if not huesped_data:
+        print("\n❌ Error interno: Huésped no encontrado.")
+        return False
+    
     hoy = date.today().isoformat()
     
-    # 1. Lógica de Consumos y Pago
-    query = """
-        SELECT C.CANTIDAD, P.PRECIO
-        FROM CONSUMOS C JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
-        WHERE C.HUESPED = ? AND C.PAGADO = 0
-    """
-    consumos_no_pagados = db.obtener_todos(query, (numero,))
-    if consumos_no_pagados:
-        total_pendiente = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados) # Asumo que la fila DB es un dict/Row
-
-        if total_pendiente > 0:
-            print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
-            respuesta_pago = pedir_confirmacion("\n⚠️  ¿Querés marcar estos consumos como pagados? (si/no): ")
-
-            if respuesta_pago == "si":
-                try:
-                    # Actualiza consumos y añade registro de pago (si es exitoso)
-                    db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero,))
-                    
-                    timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
-                    registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {timestamp}"
-                    registro_anterior += separador + registro_pago # Actualiza el registro_anterior para el paso 2
-                    
-                    print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
-                except Exception as e:
-                    print(f"\n❌ Error al marcar consumos como pagados: {e}")
-                    return False # Si el pago falla, abortar el cierre.
-            else:
-                confirmar_cierre = pedir_confirmacion("\n⚠️ ¿Deseás cerrar el huésped aun con consumos impagos? (si/no): ")
-                if confirmar_cierre != "si":
-                    print("\n❌ Cierre cancelado.")
-                    return False
-        else:
-            print("\n✔ No hay consumos pendientes de pago para este huésped.")
-        
+    # 1. VERIFICAR CONSUMOS Y GESTIONAR PAGO (Lógica Delegada)
+    checkout_ok, registro_modificado, total_pendiente = _verificar_consumos_impagos(numero, registro_anterior)
+    if not checkout_ok:
+        # El cierre fue cancelado por el usuario o falló el pago.
+        return False
+    # Usamos el registro devuelto, que ya incluye notas de pago o de deuda
+    registro_anterior = registro_modificado 
+    
     # 2. Lógica de Cierre y Log
     registro_nuevo = f"Estado modificado a CERRADO - {datetime.now().isoformat(sep=' ', timespec='seconds')}"
     registro = registro_anterior + separador + registro_nuevo
@@ -674,14 +653,11 @@ def _actualizar_a_cerrado(numero, registro_anterior, separador):
         # Ejecución del cierre
         editar_huesped_db(numero, updates) 
         
-        # Log de cierre (extraer la lógica de log a una función auxiliar es aún mejor)
-        huesped_data = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
         # ... (código de log simplificado)
         log = (
                     f"[{marca_de_tiempo()}] HUÉSPED CERRADO:\n"
                     f"Nombre: {huesped_data['NOMBRE']} {huesped_data['APELLIDO']} | Habitación: {huesped_data['HABITACION']} | Estado anterior: {huesped_data['ESTADO']}\n"
                     f"Total de consumos no pagados al momento del cierre: R {total_pendiente:.2f}\n"
-                    f"Registro previo:\n{registro_anterior.strip()}"
                     f"Acción realizada por: {usuarios.sesion.usuario}"
                 )
         registrar_log("huespedes_cerrados.log", log)
