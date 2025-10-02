@@ -45,14 +45,15 @@ def ingresar_compra():
         cantidad = pedir_entero(f"Ingresá la cantidad comprada de '{nombre}': ", minimo=1)
         nuevo_stock = stock + cantidad
         try:
-            db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
-            marca_tiempo = marca_de_tiempo()
-            log = (
-                f"[{marca_tiempo}] COMPRA INGRESADA por {usuarios.sesion.usuario}:\n"
-                f"Producto: {nombre} (ID: {codigo}) | "
-                f"Stock anterior: {stock} | Agregado: {cantidad} | Nuevo stock: {nuevo_stock}"
-            )
-            registrar_log("inventario_compras.log", log)
+            with db.transaccion():
+                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
+                marca_tiempo = marca_de_tiempo()
+                log = (
+                    f"[{marca_tiempo}] COMPRA INGRESADA por {usuarios.sesion.usuario}:\n"
+                    f"Producto: {nombre} (ID: {codigo}) | "
+                    f"Stock anterior: {stock} | Agregado: {cantidad} | Nuevo stock: {nuevo_stock}"
+                )
+                registrar_log("inventario_compras.log", log)
             if cantidad == 1:
                 print(f"\n✔ Se aumentó {cantidad} unidad el stock de '{nombre}' (Nuevo stock: {nuevo_stock}).")
             else:
@@ -85,14 +86,15 @@ def editar_inventario():
         nombre = producto["NOMBRE"]
         nuevo_stock = pedir_entero(f"Ingresá el nuevo stock de '{nombre}': ", minimo=0)
         try:
-            db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
-            marca_tiempo = marca_de_tiempo()
-            log = (
-                f"[{marca_tiempo}] INVENTARIO EDITADO por {usuarios.sesion.usuario}:\n"
-                f"Producto: {nombre} (ID: {codigo}) | "
-                f"Stock anterior: {producto['STOCK']} | Nuevo stock: {nuevo_stock}"
-            )
-            registrar_log("inventario_ediciones.log", log)
+            with db.transaccion():
+                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, codigo))
+                marca_tiempo = marca_de_tiempo()
+                log = (
+                    f"[{marca_tiempo}] INVENTARIO EDITADO por {usuarios.sesion.usuario}:\n"
+                    f"Producto: {nombre} (ID: {codigo}) | "
+                    f"Stock anterior: {producto['STOCK']} | Nuevo stock: {nuevo_stock}"
+                )
+                registrar_log("inventario_ediciones.log", log)
             print(f"\n✔ Stock actualizado para '{nombre}'. Nuevo stock: {nuevo_stock}.")
         except Exception as e: 
             print(f"\n❌ Error al actualizar el inventario: {e}")

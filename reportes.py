@@ -115,7 +115,6 @@ def reporte_pronto_checkin():
     if huespedes:
         print("\nHuéspedes con check-in programado proximamente:")
         imprimir_huespedes(huespedes)
-        input("\nPresione Enter para continuar...")
         return
     else:
         print("\n❌ No hay huéspedes con check-in programado para hoy ni para mañana.")
@@ -146,7 +145,20 @@ def reporte_inventario():
 def reporte_ocupacion():
     hoy = date.today()
     dias = 20  # rango de días a mostrar
-    col_w = 2  # ancho fijo de cada columna
+    col_w = 3  # ancho fijo de cada columna
+     
+    ANCHO_ETIQUETA = 0 # Hab # (Tipo de Habitación) |
+    for hab in range(1, 8):
+        tipo = HABITACIONES[hab]["tipo"]
+        # Calculamos la longitud de la base (Ej: "Hab 7 (Master Suite)")
+        label_base = f"Hab {hab} ({tipo})"
+        if len(label_base) > ANCHO_ETIQUETA:
+            ANCHO_ETIQUETA = len(label_base)
+
+    # El ancho total de la etiqueta será: [Base Alineada] + [|] + [Espacio]
+    # La alineación la manejamos con el ljust.
+    ANCHO_BASE = ANCHO_ETIQUETA + 1 # Añadimos 1 para un espacio interno extra si es necesario.
+                                     # Usaremos ANCHO_ETIQUETA directamente para el padding.
 
     # Traer huéspedes abiertos y programados
     huespedes = db.obtener_todos("""
@@ -156,54 +168,85 @@ def reporte_ocupacion():
     """)
 
     # Inicializar mapa de ocupación (habitaciones 1..7)
-    ocupacion = {hab: ["." for _ in range(dias)] for hab in range(1, 8)}
+    ocupacion = {hab: [" . " for _ in range(dias)] for hab in range(1, 8)}
 
     for h in huespedes:
         hab = h["HABITACION"]
         if not hab or hab == 0:
             continue
-        f_in = date.fromisoformat(h["CHECKIN"])
-        f_out = date.fromisoformat(h["CHECKOUT"])
+        try:
+            f_in = date.fromisoformat(h["CHECKIN"])
+            f_out = date.fromisoformat(h["CHECKOUT"])
+        except ValueError:
+            continue
+
         estado = h["ESTADO"]
         
+        # --- Marcar días de estadía (X o P) ---
         for i in range(dias):
             d = hoy + timedelta(days=i)
 
+            # Usamos f_in < d < f_out para NO incluir el día de CI/CO en esta sección
+            # Si incluimos f_in, la lógica de CI/CO la sobreescribirá más adelante.
+            # Sin embargo, mantener la lógica original f_in <= d < f_out es más simple
+            # y dejamos que el CI/CO sobrescriba.
             if f_in <= d < f_out:
                 if estado == "ABIERTO":
-                    ocupacion[hab][i] = "X"
-                elif ocupacion[hab][i] == ".": # Solo si está libre, para no sobreescribir otro estado
-                    ocupacion[hab][i] = "P"
+                    ocupacion[hab][i] = " X "
+                elif ocupacion[hab][i] == " . ": # Solo si está libre, para no sobreescribir otro estado
+                    ocupacion[hab][i] = " P "
 
+        # --- Marcar Checkout(CO) o solapamiento (O/I) ---
+        if 0 <= (f_out - hoy).days < dias: 
+            idx = (f_out - hoy).days
+        
+            # Si el día ya tiene un CI de una reserva PROCESADA ANTERIORMENTE.
+            if ocupacion[hab][idx] == "CI ":
+                ocupacion[hab][idx] = "O/I" # Sobrescribe CI con O/I
+            # Si el día no está marcado como CI (es libre o está marcado por P/X/otra cosa), 
+            # lo marcamos como CO. Esto es seguro porque la lógica P/X ya corrió.
+            elif ocupacion[hab][idx] == " . ": 
+                 ocupacion[hab][idx] = "CO " 
+
+        # --- Marcar Check-In (CI) o Solapamiento (O/I) ---
         if 0 <= (f_in - hoy).days < dias:
             idx = (f_in - hoy).days
-            ocupacion[hab][idx] = "CI"
-
-        if 0 <= (f_out - hoy).days < dias:
-            idx = (f_out - hoy).days
-            # Si el check-in y check-out son el mismo día
-            if ocupacion[hab][idx] == "CI":
-                ocupacion[hab][idx] = "CI/CO"
+            
+            # Chequear si el día ya fue marcado como CO por OTRA reserva.
+            if ocupacion[hab][idx] == "CO ":
+                # Si otra reserva ya marcó CO, es un solapamiento Check-Out/Check-In
+                ocupacion[hab][idx] = "O/I" 
             else:
-                ocupacion[hab][idx] = "CO"
+                # Si no hay CO, lo marcamos como CI. Esto Sobreescribirá cualquier P/X.
+                ocupacion[hab][idx] = "CI " 
 
-    # Encabezado (2 caracteres por día)
+    # -------------------------------------------------------------
+    # IMPRESIÓN Y ALINEACIÓN
+    # -------------------------------------------------------------
+
+    # Encabezado de días (01<espacio>)
     header_days = "".join(f"{(hoy + timedelta(days=i)).day:02}".ljust(col_w) for i in range(dias))
     print("\n📊 Informe de ocupación de habitaciones (20 días):\n")
-    print(" " * 8 + header_days)
+    
+    # La alineación del encabezado necesita la longitud de la base (max_label_length) 
+    # más 2 espacios (el '|' y el espacio de separación).
+    # Usaremos max_label_length + 2.
+    print(" " * (ANCHO_ETIQUETA + 2) + header_days)
 
     # Filas
     for hab in range(1, 8):
         tipo = HABITACIONES[hab]["tipo"]  # Obtener tipo de habitación
-        fila_celdas = "".join(s.ljust(col_w) for s in ocupacion[hab])
-        print(f"Hab {hab} ({tipo:<10})| {fila_celdas}")
+        label_base = f"Hab {hab} ({tipo})"
+        aligned_base = label_base.ljust(ANCHO_ETIQUETA)
+        fila_celdas = "".join(s for s in ocupacion[hab])
+        print(f"{aligned_base}| {fila_celdas}")
 
-    print("\nLeyenda: CI = Check-in, CO = Check-out, X = Ocupado, P = Programado, . = Libre")
+    print("\nLeyenda: CI=Checkin, CO=Checkout, O/I=Checkou/in solapado, X=Ocupado, P=Programado, .. = Libre")
     input("\nPresione Enter para continuar...")
 
 @usuarios.requiere_acceso(2)
 def ver_logs():
-    leyenda = "\n¿Qué log querés ver?\n1. Consumos de cortesía\n2. Consumos eliminados\n3. Huéspedes cerrados\n4. Huéspedes eliminados\n5. Productos editados\n6. Check-ins realizados\nó 0. Cancelar"
+    leyenda = "\n¿Qué log querés ver?\n1. Consumos de cortesía\n2. Consumos eliminados\n3. Huéspedes cerrados\n4. Huéspedes eliminados\n5. Productos editados\n6. Check-ins realizados\nó 0. Cancelar\n"
     
     logs = {
         1: "consumos_cortesia.log", 

@@ -49,7 +49,7 @@ def imprimir_huesped(huesped):
     print("-" * 40)
 
 def imprimir_huespedes(huespedes):
-    print(f"{'NUMERO':<6} {'APELLIDO':<15} {'NOMBRE':<15} {'ESTADO':<10} {'HAB':<4} {'CHECKIN':<12} {'CHECKOUT':<12}")
+    print(f"{'NUMERO':<6} {'APELLIDO':<15} {'NOMBRE':<15} {'ESTADO':^10} {'HAB':^5} {'CHECKIN':^12} {'CHECKOUT':^12}")
     print("-" * 80)
     for _, h in enumerate(huespedes, start=1):
         numero = h["NUMERO"]
@@ -67,7 +67,8 @@ def imprimir_huespedes(huespedes):
         # Los anchos son 15 caracteres para Apellido y Nombre
         apellido_display = (apellido_display[:12] + '...') if len(apellido_display) > 15 else apellido_display
         nombre_display = (nombre_display[:12] + '...') if len(nombre_display) > 15 else nombre_display
-        print(f"{numero:<6} {apellido_display:<15} {nombre_display:<15} {estado:<10} {habitacion:<4} {checkin:<12} {checkout:<12}")
+        # Impresión
+        print(f"{numero:<6} {apellido_display:<15} {nombre_display:<15} {estado:<10} {habitacion:^5} {checkin:<12} {checkout:<12}")
     input("\nPresioná Enter para continuar...")
 
 def pedir_fecha_valida(mensaje, allow_past=False):
@@ -211,6 +212,8 @@ def pedir_entero(mensaje, minimo=None, maximo=None, defecto=None):
 def pedir_telefono(mensaje="Ingresá un número de WhatsApp (11 dígitos mínimo): "):
     while True:
         respuesta_telefono = input(mensaje).strip()
+        if not respuesta_telefono:
+            return 0
         solo_digitos = re.sub(r"\D", "", respuesta_telefono)  # Elimina todo lo que no sea número
         
         if len(solo_digitos) < 11:
@@ -237,6 +240,11 @@ def pedir_confirmacion(mensaje="¿Confirma? (si/no): ", defecto=None):
 def pedir_mail(mensaje="Ingresá el e-mail de contacto: "):
     while True:
         email = input(mensaje).strip()
+        # 1. Comprueba si el campo está vacío
+        if not email:
+            return "" # Retorna una cadena vacía si no se ingresó nada
+        # 2. Comprueba si el email es válido (si no está vacío)
+        # El patrón de regex que tienes es: r"[^@]+@[^@]+\.[^@]+"
         if re.match(r"[^@]+@[^@]+\.[^@]+", email):
             return email
         print("\n❌ Correo electrónico inválido, intente nuevamente.")
@@ -331,17 +339,24 @@ def habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=None):
     fecha_out = date.fromisoformat(checkout)
 
     for h in huespedes:
-        num, h_in, h_out = h
+        num = h["NUMERO"]
+        h_in = h["CHECKIN"]
+        h_out = h["CHECKOUT"]
         if excluir_numero and num == excluir_numero:
-            continue  # ignorar al mismo huésped que estamos editando
-        h_in = date.fromisoformat(h_in)
-        h_out = date.fromisoformat(h_out)
-
+            continue  # Ignorar al mismo huésped que estamos editando
+        try:
+            h_in = date.fromisoformat(h_in)
+            h_out = date.fromisoformat(h_out)
+        except ValueError:
+            # Si las fechas en la DB no son ISO, intenta el formato DD/MM/YY
+            from datetime import datetime
+            h_in = datetime.strptime(h_in, '%d/%m/%y').date()
+            h_out = datetime.strptime(h_out, '%d/%m/%y').date()
         # Verificar solapamiento
-        if fecha_in <= h_out and h_in <= fecha_out:
-            return True  # está ocupada en ese rango
+        if fecha_in < h_out and h_in < fecha_out:
+            return True  # Está ocupada en ese rango
 
-    return False  # libre en esas fechas
+    return False  # Libre en esas fechas
 
 def imprimir_producto(producto):
     if not producto:

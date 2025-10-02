@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 
 class DBManager:
     def __init__(self, db_path="BaseDeDatos.db"):
@@ -7,7 +8,7 @@ class DBManager:
         self.abrir_conexion() # Abre la conexión al inicializar
 
     def abrir_conexion(self):
-        """Intenta abrir la conexión, configurando los parámetros."""
+        #Intenta abrir la conexión, configurando los parámetros.
         if self._conn is None:
             try:
                 self._conn = sqlite3.connect(self._path)
@@ -23,10 +24,27 @@ class DBManager:
     # ---------------------------------------------
 
     def ejecutar(self, query, params=()):
-        """Ejecuta una sentencia de modificación (INSERT/UPDATE/DELETE)."""
+        #Ejecuta una sentencia de modificación pero SIN hacer commit.
         if self._conn is None: self.abrir_conexion()
-        with self._conn: # Usa el context manager para COMMIT/ROLLBACK automáticos
-            self._conn.execute(query, params)
+        # Quitamos el 'with self._conn:' para controlar la transacción manualmente
+        self._conn.execute(query, params)
+
+    # --- 👇 CAMBIO CLAVE 2: Añadir el manejador de contexto 'transaccion' ---
+    @contextmanager
+    def transaccion(self):
+        # Un manejador de contexto para asegurar que un bloque de operaciones se ejecute de forma atómica (todo o nada).
+        if self._conn is None: self.abrir_conexion()
+        try:
+            # No hacemos nada especial al entrar, solo nos preparamos
+            yield
+            # Si el bloque 'with' termina sin errores, hacemos COMMIT
+            self._conn.commit()
+        except Exception as e:
+            # Si ocurre cualquier error dentro del bloque 'with', hacemos ROLLBACK
+            print(f"❌ Ocurrió un error, revirtiendo cambios (rollback): {e}")
+            self._conn.rollback()
+            # Opcional: relanzar el error si quieres que el programa principal lo sepa
+            raise
 
     # Nota: Los métodos 'confirmar', 'revertir' e 'iniciar' ya no son necesarios
     # si se usa el context manager de la conexión.

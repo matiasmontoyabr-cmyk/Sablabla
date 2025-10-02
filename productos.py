@@ -5,6 +5,15 @@ from db import db
 from unidecode import unidecode
 from utiles import pedir_precio, pedir_entero, pedir_confirmacion, imprimir_productos, imprimir_producto, marca_de_tiempo, registrar_log, opcion_menu
 
+LISTA_BLANCA_PRODUCTOS = [
+    "CODIGO",
+    "NOMBRE",
+    "PRECIO",
+    "STOCK",
+    "ALERTA",
+    "PINMEDIATO"
+]
+
 @usuarios.requiere_acceso(1)
 def nuevo_producto():
     codigo = None
@@ -57,11 +66,12 @@ def nuevo_producto():
     pago_inmediato = 0 if respuesta_pago_inmediato != "si" else 1
     
     try:
-        data = {"codigo": codigo, "nombre": nombre, "precio": precio, "stock": stock, "pinmediato": pago_inmediato, "alerta": alerta}
-        # We'll try to insert the product
-        # and let the database tell us if it already exists.
-        sql = "INSERT INTO PRODUCTOS (CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, PINMEDIATO) VALUES (?, ?, ?, ?, ?, ?)"
-        db.ejecutar(sql, (data["codigo"], data["nombre"], data["precio"], data["stock"], data["alerta"], data["pinmediato"]))
+        with db.transaccion():
+            data = {"codigo": codigo, "nombre": nombre, "precio": precio, "stock": stock, "pinmediato": pago_inmediato, "alerta": alerta}
+            # We'll try to insert the product
+            # and let the database tell us if it already exists.
+            sql = "INSERT INTO PRODUCTOS (CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, PINMEDIATO) VALUES (?, ?, ?, ?, ?, ?)"
+            db.ejecutar(sql, (data["codigo"], data["nombre"], data["precio"], data["stock"], data["alerta"], data["pinmediato"]))
         print(f'\n✔ Producto "{nombre.capitalize()}" registrado correctamente con codigo {codigo}.')
     except sqlite3.IntegrityError:
         print(f"❌ Ya existe un producto con el código {codigo}.")
@@ -181,7 +191,27 @@ def _ejecutar_busqueda(criterio, valor):
             return [] # Si el criterio no es reconocido, devuelve una lista vacía
 
 def actualizar_producto_db(database, codigo, campo, valor):
-    database.ejecutar(f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?", (valor, codigo))
+    # 1. Validación de la Lista Blanca (El parche de seguridad)
+    if campo not in LISTA_BLANCA_PRODUCTOS:
+        print(f"\n❌ ERROR de seguridad: El campo '{campo}' no está permitido para ser actualizado.")
+        return False
+    # 2. Ejecución Segura
+    try:
+        # La consulta es segura porque:
+        # a) El nombre del campo ({campo}) ha sido validado contra la lista blanca.
+        # b) El valor (?) se pasa como parámetro, evitando inyección en el valor.
+        sql = f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?"
+        database.ejecutar(sql, (valor, codigo))
+        print(f"\n✔ Campo '{campo}' del producto {codigo} actualizado correctamente.")
+        return True
+        
+    except sqlite3.IntegrityError:
+        # Captura errores si, por ejemplo, intentas usar un 'CODIGO' que ya existe.
+        print(f"\n❌ Error de integridad: El valor '{valor}' para el campo '{campo}' ya existe o es inválido.")
+        return False
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el producto {codigo}: {e}")
+        return False
 
 def _seleccionar_producto_a_editar():
     # Busca y selecciona un producto para editar.
@@ -208,16 +238,17 @@ def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
 
     codigo_original = producto_original["CODIGO"]
     try:
-        actualizar_producto_db(db, codigo_original, campo, nuevo_valor)
+        with db.transaccion():
+            actualizar_producto_db(db, codigo_original, campo, nuevo_valor)
 
-        log = (
-            f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-            f"Estado anterior -> Código: {producto_original['CODIGO']}, Nombre: {producto_original['NOMBRE']}, "
-            f"Precio: {producto_original['PRECIO']}, Stock: {producto_original['STOCK']}, "
-            f"Alerta: {producto_original['ALERTA']}\n, P.Inmediato: {producto_original['PINMEDIATO']}"
-            f"  Campo modificado -> \"{campo}\": {nuevo_valor}"
-        )
-        registrar_log("productos_editados.log", log)
+            log = (
+                f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
+                f"Estado anterior -> Código: {producto_original['CODIGO']}, Nombre: {producto_original['NOMBRE']}, "
+                f"Precio: {producto_original['PRECIO']}, Stock: {producto_original['STOCK']}, "
+                f"Alerta: {producto_original['ALERTA']}\n, P.Inmediato: {producto_original['PINMEDIATO']}"
+                f"  Campo modificado -> \"{campo}\": {nuevo_valor}"
+            )
+            registrar_log("productos_editados.log", log)
         print(f"\n✔ {campo.capitalize()} actualizado correctamente.")
         return True
     except sqlite3.IntegrityError:
@@ -348,16 +379,17 @@ def eliminar_producto():
             confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que querés eliminar este producto? (si/no): ")
             if confirmacion == "si":
                 try:
-                    db.ejecutar("DELETE FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
-                    marca_tiempo = marca_de_tiempo()
-                    log = (
-                        f"[{marca_tiempo}] PRODUCTO ELIMINADO por {usuarios.sesion.usuario}:\n"
-                        f"Código: {producto['CODIGO']} | "
-                        f"Nombre: {producto['NOMBRE']} | "
-                        f"Precio: {producto['PRECIO']} | "
-                        f"Stock: {producto['STOCK']}"
-                    )
-                    registrar_log("productos_eliminados.log", log)
+                    with db.transaccion():
+                        db.ejecutar("DELETE FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
+                        marca_tiempo = marca_de_tiempo()
+                        log = (
+                            f"[{marca_tiempo}] PRODUCTO ELIMINADO por {usuarios.sesion.usuario}:\n"
+                            f"Código: {producto['CODIGO']} | "
+                            f"Nombre: {producto['NOMBRE']} | "
+                            f"Precio: {producto['PRECIO']} | "
+                            f"Stock: {producto['STOCK']}"
+                        )
+                        registrar_log("productos_eliminados.log", log)
                     print("\n✔ Producto eliminado.")
                     return
                 except sqlite3.IntegrityError:

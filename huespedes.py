@@ -6,6 +6,21 @@ from db import db
 from unidecode import unidecode
 from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación, opcion_menu, pedir_nombre
 
+LISTA_BLANCA_HUESPED = [
+    "APELLIDO",
+    "NOMBRE",
+    "TELEFONO",
+    "EMAIL",
+    "APP",
+    "CHECKIN",
+    "CHECKOUT",
+    "DOCUMENTO",
+    "CONTINGENTE",
+    "REGISTRO",
+    "ESTADO",
+    "HABITACION"
+]
+
 @usuarios.requiere_acceso(1)
 def nuevo_huesped():
     estado = None
@@ -24,15 +39,15 @@ def nuevo_huesped():
         elif pregunta_estado == 0:
             print("\n❌ Registro de huésped cancelado.")
             return
+        
+    mensaje_nombre = "Escriba el nombre del huesped ó (0) para cancelar: "
+    nombre = pedir_nombre(mensaje_nombre)
+    if nombre is None:
+        return
     
     mensaje_apellido = "Escribí el apellido del huesped ó (0) para cancelar: "
     apellido = pedir_nombre(mensaje_apellido)
     if apellido is None: # Si es None, el usuario canceló
-        return
-    
-    mensaje_nombre = "Escriba el nombre del huesped ó (0) para cancelar: "
-    nombre = pedir_nombre(mensaje_nombre)
-    if nombre is None:
         return
     
     contingente = pedir_entero("Ingresá la cantidad de huéspedes: ",minimo=1,maximo=4)
@@ -68,18 +83,19 @@ def nuevo_huesped():
     data = {"apellido": apellido, "nombre": nombre, "telefono": telefono, "email": email, "aplicativo": aplicativo, "estado": estado, "checkin": checkin, "checkout": checkout, "documento": documento, "habitacion": habitacion, "contingente": contingente, "registro": registro}
 
     try:
-        sql = """
-        INSERT INTO HUESPEDES (
-            APELLIDO, NOMBRE, TELEFONO, EMAIL, APP, ESTADO,
-            CHECKIN, CHECKOUT, DOCUMENTO, HABITACION,
-            CONTINGENTE, REGISTRO
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        valores = (data["apellido"],data["nombre"], data["telefono"], data["email"], data["aplicativo"],
-            data["estado"], data["checkin"], data["checkout"], data["documento"],
-            data["habitacion"], data["contingente"], data["registro"])
-        
-        db.ejecutar(sql, valores)
+        with db.transaccion():
+            sql = """
+            INSERT INTO HUESPEDES (
+                APELLIDO, NOMBRE, TELEFONO, EMAIL, APP, ESTADO,
+                CHECKIN, CHECKOUT, DOCUMENTO, HABITACION,
+                CONTINGENTE, REGISTRO
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            valores = (data["apellido"],data["nombre"], data["telefono"], data["email"], data["aplicativo"],
+                data["estado"], data["checkin"], data["checkout"], data["documento"],
+                data["habitacion"], data["contingente"], data["registro"])
+            
+            db.ejecutar(sql, valores)
     except Exception as e:
         print(f"\n❌ Error al registrar el huésped: {e}")
     print("\n✔ Huésped registrado correctamente.")
@@ -107,23 +123,26 @@ def _pedir_datos(huesped):
 
     # 2. TELÉFONO
     # Si el teléfono es None, 0, o una cadena vacía, lo solicitamos.
-    telefono_actual = str(huesped["TELEFONO"] or "").strip()
-    if not telefono_actual or telefono_actual == "0":
-        telefono = pedir_telefono("Ingresá un whatsapp de contacto : ")
-        if telefono:
-            updates["TELEFONO"] = telefono
-    else:
-        updates["TELEFONO"] = telefono_actual
+    telefono_actual = huesped["TELEFONO"]
+    if not telefono_actual:
+        nuevo_telefono = pedir_telefono("Ingresá un whatsapp de contacto : ")
+        if nuevo_telefono == 0:
+            updates["TELEFONO"] = huesped["TELEFONO"]
+        elif nuevo_telefono:
+            updates["TELEFONO"] = nuevo_telefono
 
     # 3. EMAIL
-    # Si el email es None, "0", o una cadena vacía, lo solicitamos.
+    # 1. Obtener el email actual. Mapea None a cadena vacía y elimina el marcador "0".
     email_actual = str(huesped["EMAIL"] or "").strip()
+    # 2. Incluimos el "0" en el 'or' para que str() no lo convierta, y luego el .strip() lo elimine.
+    # Condición: SOLO PEDIR el email si actualmente está vacío (incluyendo el caso "0")
     if not email_actual or email_actual == "0":
-        email = pedir_mail("Ingresá un email de contacto (o Enter para omitir): ")
-        if email:
-            updates["EMAIL"] = email
-    else:
-        updates["EMAIL"] = email_actual
+        nuevo_email = pedir_mail("Ingresá un email de contacto: ")
+        if nuevo_email == "":
+            updates["EMAIL"] = huesped["EMAIL"]
+        elif nuevo_email:
+            # Si el usuario ingresó un valor válido (la función pedir_mail lo garantiza)
+            updates["EMAIL"] = nuevo_email
 
     return updates
 
@@ -146,8 +165,8 @@ def realizar_checkin():
         for huesped in programados:
             cin = huesped["CHECKIN"]
             nro = huesped["NUMERO"]
-            ape = huesped["APELLIDO"]
-            nom = huesped["NOMBRE"]
+            ape = huesped["APELLIDO"].title()
+            nom = huesped["NOMBRE"].title()
             hab = huesped["HABITACION"]
             print(f"{cin:<15} {nro:<12} {ape:<20} {nom:<20} {hab:<5}")
         print("-" * 80)
@@ -199,7 +218,8 @@ def realizar_checkin():
         updates.update(datos_recopilados)
 
         try:
-            editar_huesped_db(numero, updates)
+            with db.transaccion():
+                _editar_huesped_db(numero, updates)
             print(f"\n✔ Checkin realizado para {huesped['APELLIDO'].title()} {huesped['NOMBRE'].title()} en la habitación {huesped['HABITACION']}.")
             
             # Opcional: Log de auditoría
@@ -220,7 +240,7 @@ def realizar_checkin():
 def realizar_checkout():
     leyenda = "\nIngresá el número de habitación a cerrar, (*) para buscar ó (0) para cancelar: "
     while True:
-        habitacion = opcion_menu(leyenda, cero=True, minimo=1, maximo=7,)
+        habitacion = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1, maximo=7,)
         if habitacion == 0:
             return
         if habitacion == "*":
@@ -233,7 +253,7 @@ def realizar_checkout():
                 print(f"{'HAB':<5} {'APELLIDO':<20} {'NOMBRE':<20}")
                 print("-" * 45)
                 for huesped in abiertas:
-                    print(f"{huesped["HABITACION"]:<5} {huesped["APELLIDO"]:<20} {huesped["NOMBRE"]:<20}")
+                    print(f"{huesped["HABITACION"]:<5} {huesped["APELLIDO"].title():<20} {huesped["NOMBRE"].title():<20}")
                 print("-" * 45)
             continue
 
@@ -248,26 +268,26 @@ def realizar_checkout():
         hoy = date.today().isoformat()
         separador = "\n---\n"
         registro_anterior = str(huesped["REGISTRO"] or "")
-
-        checkout_ok, registro_actualizado, total_pendiente = _verificar_consumos_impagos(numero, registro_anterior)
-
-        if not checkout_ok:
-            # El checkout fue cancelado
-            return
-
-        #CERRAR HABITACIÓN
-        registro_nuevo = f"Estado modificado a CERRADO - {marca_de_tiempo()}"
-
-        # Usamos el registro_actualizado que puede o no tener la nota de pago/advertencia
-        if registro_actualizado.strip():
-            registro_final = registro_actualizado + separador + registro_nuevo
-        else:
-            registro_final = registro_nuevo
-        
-        updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro_final}
-
         try:
-            editar_huesped_db(numero, updates)
+            with db.transaccion():
+                checkout_ok, registro_actualizado, total_pendiente = _verificar_consumos_impagos(numero, registro_anterior)
+
+                if not checkout_ok:
+                    # El checkout fue cancelado
+                    return
+
+                #CERRAR HABITACIÓN
+                registro_nuevo = f"Estado modificado a CERRADO - {marca_de_tiempo()}"
+
+                # Usamos el registro_actualizado que puede o no tener la nota de pago/advertencia
+                if registro_actualizado.strip():
+                    registro_final = registro_actualizado + separador + registro_nuevo
+                else:
+                    registro_final = registro_nuevo
+                
+                updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro_final}
+
+                _editar_huesped_db(numero, updates)
             
             # 5. LOG DE AUDITORÍA
             log = (
@@ -280,23 +300,24 @@ def realizar_checkout():
             print(f"\n✔ Checkout de Habitación {habitacion} realizado correctamente.")
             
         except Exception as e:
-            print(f"\n❌ Error al realizar el checkout: {e}")
-            
+            if str(e) != "Checkout cancelado por el usuario.":
+                 print(f"\n❌ Error al realizar el checkout. La operación fue revertida.")
         return
 
 @usuarios.requiere_acceso(0)
 def buscar_huesped():
     opciones = {
-        1: ("APELLIDO", lambda: input("Ingresá el apellido: ").strip()),
-        2: ("NUMERO", lambda: input("Ingresá el número de huesped: ").strip()),
-        3: ("HABITACION", lambda: input("Ingresá el número de habitación: ").strip()),
-        4: ("DOCUMENTO", lambda: input("Ingresá el número de documento: ").strip()),
-        5: ("*", None)  # Ver todos
+        1: ("APELLIDO", lambda: pedir_nombre("Ingresá el apellido: ")),
+        2: ("NOMBRE", lambda: pedir_nombre("Ingresá el nombre: ")),
+        3: ("NUMERO", lambda: input("Ingresá el número de huesped: ").strip()),
+        4: ("HABITACION", lambda: input("Ingresá el número de habitación: ").strip()),
+        5: ("DOCUMENTO", lambda: input("Ingresá el número de documento: ").strip()),
+        6: ("*", None)  # Ver todos
     }
 
-    leyenda = "\n¿Cómo querés buscar al huesped?\n1. Por apellido\n2. Por número de huesped\n3. Por número de habitación\n4. Por documento\n5. Imprimir todos\n0. Cancelar: "
+    leyenda = "\n¿Cómo querés buscar al huesped?\n1. Por apellido\n2. Por nombre\n3. Por número de huesped\n4. Por número de habitación\n5. Por documento\n6. Imprimir todos\n0. Cancelar\n"
     while True:
-        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=5,)
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=6,)
 
         if opcion == 0:
             return
@@ -308,26 +329,32 @@ def buscar_huesped():
 
             if campo == "*":
                 huespedes = db.obtener_todos("SELECT * FROM HUESPEDES ORDER BY LOWER(APELLIDO), LOWER(NOMBRE)")
+            elif campo in ("APELLIDO", "NOMBRE"):
+                # Búsqueda por texto (Apellido o Nombre) - LÓGICA UNIFICADA
+                valor_normalizado = get_valor()
+                if valor_normalizado is None:  # Si el usuario canceló
+                    return
+                # 1. Búsqueda en SQL: Traer un subconjunto usando LIKE (más rápido)
+                # Se usa el valor normalizado para la búsqueda LIKE
+                query = f"SELECT * FROM HUESPEDES WHERE LOWER({campo}) LIKE ?"
+                # Añadimos '%' para búsqueda parcial. LOWER() asegura insensibilidad a mayúsculas.
+                patron_sql = f"%{valor_normalizado}%"
+                # Obtenemos los huéspedes que *probablemente* coinciden
+                huespedes_amplio = db.obtener_todos(query, (patron_sql,))
+                # 2. Filtrado final en Python: Asegurar coincidencia de tildes (máxima precisión)
+                huespedes = [
+                    h for h in huespedes_amplio
+                    # Comparamos: valor_normalizado IN (unidecode del valor en BD)
+                    if valor_normalizado in unidecode(h[campo]).lower()
+                ]
             else: 
                 valor_raw = get_valor()
                 if not valor_raw:
                     print("\n⚠️  El valor de búsqueda no puede estar vacío.")
                     continue
-                if campo == "APELLIDO":
-                    # La consulta a la DB se hace amplia, sin normalizar acentos
-                    query = "SELECT * FROM HUESPEDES WHERE APELLIDO LIKE ?"
-                    params = (f"%{valor_raw}%",)
-                    huespedes_iniciales = db.obtener_todos(query, params)
-                    # Ahora, filtramos en Python usando unidecode
-                    valor_normalizado = unidecode(valor_raw).lower()
-                    huespedes_final = [
-                        h for h in huespedes_iniciales
-                        if valor_normalizado in unidecode(h["APELLIDO"]).lower()
-                    ]
-                    huespedes = huespedes_final # Asigna el resultado filtrado a la variable final
-                else:
-                    query = f"SELECT * FROM HUESPEDES WHERE {campo} = ?"
-                    huesped = db.obtener_uno(query, (valor_raw,))
+                query = f"SELECT * FROM HUESPEDES WHERE {campo} = ?"
+                huesped = db.obtener_uno(query, (valor_raw,))
+                
             if huespedes:
                 print("\nListado de huéspedes:")
                 imprimir_huespedes(huespedes)
@@ -393,7 +420,7 @@ def editar_huesped():
         "2": ("NOMBRE", lambda: input("\nIngresá el nuevo nombre: ").strip()),
         "3": ("TELEFONO", lambda: pedir_telefono("\nIngresá el nuevo número de WhatsApp (11 dígitos): ")),
         "4": ("EMAIL", lambda: pedir_mail("\nIngresá el nuevo e-mail:")),
-        "5": ("BOOKING", lambda: pedir_confirmacion("\n¿Es una reserva de Booking? si/no ")),
+        "5": ("APP", lambda: pedir_confirmacion("\n¿Es una reserva de aplicativo? si/no ")),
         "6": ("CHECKIN", lambda: pedir_fecha_valida("\nIngresá la fecha de checkin (DD-MM-YYYY): ", allow_past=True)),
         "7": ("CHECKOUT", lambda: pedir_fecha_valida("\nIngresá la nueva fecha de checkout (DD-MM-YYYY): ")),
         "8": ("DOCUMENTO", lambda: input("\nIngresá el nuevo documento: ").strip()),
@@ -435,8 +462,11 @@ def editar_huesped():
             nuevo_registro = registro_anterior + separador + registro_actual
             updates = {campo_sql: nuevo_valor, "REGISTRO": nuevo_registro}
             try:
-                editar_huesped_db(numero, updates)
+                with db.transaccion():
+                    _editar_huesped_db(numero, updates)
                 print(f"✔ {campo_sql} actualizado correctamente.")
+            except ValueError as e:
+                print(f"\n{e}")
             except Exception as e:
                 print(f"Error al actualizar {campo_sql}: {e}")
             break
@@ -467,20 +497,21 @@ def eliminar_huesped():
         confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que querés eliminar este huésped? (si/no): ")
         if confirmacion == "si":
             try:
-                db.ejecutar("DELETE FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-                marca_tiempo = marca_de_tiempo()
-                log = (
-                    f"[{marca_tiempo}] HUÉSPED ELIMINADO:\n"
-                    f"| NUMERO: {huesped['NUMERO']} | Apellido: {huesped['APELLIDO']} | "
-                    f"| Nombre: {huesped['NOMBRE']} | Teléfono: {huesped['TELEFONO']} | "
-                    f"| Email: {huesped['EMAIL']} | Booking: {huesped['BOOKING']} | "
-                    f"| Estado: {huesped['ESTADO']} | Checkin: {huesped['CHECKIN']} | "
-                    f"| Checkout: {huesped['CHECKOUT']} | Documento: {huesped['DOCUMENTO']} | "
-                    f"| Habitación: {huesped['HABITACION']} | Contingente: {huesped['CONTINGENTE']} | "
-                    f"| Registro: {huesped['REGISTRO']}\n"
-                    f"| Acción realizada por: {usuarios.sesion.usuario}"
-                )
-                registrar_log("huespedes_eliminados.log", log)
+                with db.transaccion():
+                    db.ejecutar("DELETE FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+                    marca_tiempo = marca_de_tiempo()
+                    log = (
+                        f"[{marca_tiempo}] HUÉSPED ELIMINADO:\n"
+                        f"| NUMERO: {huesped['NUMERO']} | Apellido: {huesped['APELLIDO']} | "
+                        f"| Nombre: {huesped['NOMBRE']} | Teléfono: {huesped['TELEFONO']} | "
+                        f"| Email: {huesped['EMAIL']} | Booking: {huesped['APP']} | "
+                        f"| Estado: {huesped['ESTADO']} | Checkin: {huesped['CHECKIN']} | "
+                        f"| Checkout: {huesped['CHECKOUT']} | Documento: {huesped['DOCUMENTO']} | "
+                        f"| Habitación: {huesped['HABITACION']} | Contingente: {huesped['CONTINGENTE']} | "
+                        f"| Registro: {huesped['REGISTRO']}\n"
+                        f"| Acción realizada por: {usuarios.sesion.usuario}"
+                    )
+                    registrar_log("huespedes_eliminados.log", log)
                 print("\n✔ Huésped eliminado.")
             except sqlite3.IntegrityError:
                 print("\n❌ No se puede eliminar el huésped porque tiene consumos pendientes.")
@@ -544,7 +575,7 @@ def _obtener_huesped():
 
 def _nuevo_estado():
     # Bucle de entrada para seleccionar y validar el nuevo estado."""
-    opciones = {"1": "PROGRAMADO","2": "ABIERTO","3": "CERRADO"}
+    opciones = {1: "PROGRAMADO",2: "ABIERTO",3: "CERRADO"}
     leyenda = "\n¿A qué estado querés cambiar?\nIngresá (1) PROGRAMADO, (2) ABIERTO, (3) CERRADO, ó (0) para cancelar: "
     while True:
         seleccion = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1, maximo=3)
@@ -578,9 +609,12 @@ def _actualizar_a_programado(numero, registro_anterior, separador):
     
     # 3. Ejecución y manejo de errores
     try:
-        editar_huesped_db(numero, updates) 
+        with db.transaccion():
+            _editar_huesped_db(numero, updates) 
         print("\n✔ Estado actualizado a PROGRAMADO.")
         return True
+    except ValueError as e:
+        print(f"{e}") 
     except Exception as e:
         print(f"\n❌ Error al actualizar el estado a PROGRAMADO: {e}")
         return False
@@ -619,9 +653,12 @@ def _actualizar_a_abierto(numero, registro_anterior, separador):
     
     # 3. Ejecución y manejo de errores
     try:
-        editar_huesped_db(numero, updates)
+        with db.transaccion():
+            _editar_huesped_db(numero, updates)
         print("\n✔ Estado actualizado a ABIERTO.")
         return True
+    except ValueError as e:
+        print(f"{e}") 
     except Exception as e:
         print(f"\n❌ Error al actualizar el estado a ABIERTO: {e}")
         return False
@@ -633,27 +670,27 @@ def _actualizar_a_cerrado(numero, registro_anterior, separador):
     if not huesped_data:
         print("\n❌ Error interno: Huésped no encontrado.")
         return False
-    
-    hoy = date.today().isoformat()
-    
-    # 1. VERIFICAR CONSUMOS Y GESTIONAR PAGO (Lógica Delegada)
-    checkout_ok, registro_modificado, total_pendiente = _verificar_consumos_impagos(numero, registro_anterior)
-    if not checkout_ok:
-        # El cierre fue cancelado por el usuario o falló el pago.
-        return False
-    # Usamos el registro devuelto, que ya incluye notas de pago o de deuda
-    registro_anterior = registro_modificado 
-    
-    # 2. Lógica de Cierre y Log
-    registro_nuevo = f"Estado modificado a CERRADO - {datetime.now().isoformat(sep=' ', timespec='seconds')}"
-    registro = registro_anterior + separador + registro_nuevo
-    updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro}
-
     try:
-        # Ejecución del cierre
-        editar_huesped_db(numero, updates) 
-        
-        # ... (código de log simplificado)
+        with db.transaccion():
+            hoy = date.today().isoformat()
+            
+            # 1. VERIFICAR CONSUMOS Y GESTIONAR PAGO (Lógica Delegada)
+            checkout_ok, registro_modificado, total_pendiente = _verificar_consumos_impagos(numero, registro_anterior)
+            if not checkout_ok:
+                # El cierre fue cancelado por el usuario o falló el pago.
+                return False
+            # Usamos el registro devuelto, que ya incluye notas de pago o de deuda
+            registro_anterior = registro_modificado 
+            
+            # 2. Lógica de Cierre y Log
+            registro_nuevo = f"Estado modificado a CERRADO - {datetime.now().isoformat(sep=' ', timespec='seconds')}"
+            registro = registro_anterior + separador + registro_nuevo
+            updates = {"ESTADO": "CERRADO", "CHECKOUT": hoy, "HABITACION": 0, "REGISTRO": registro}
+
+            # Ejecución del cierre
+            _editar_huesped_db(numero, updates) 
+                
+        # Este código solo se ejecuta si la transacción fue exitosa
         log = (
                     f"[{marca_de_tiempo()}] HUÉSPED CERRADO:\n"
                     f"Nombre: {huesped_data['NOMBRE']} {huesped_data['APELLIDO']} | Habitación: {huesped_data['HABITACION']} | Estado anterior: {huesped_data['ESTADO']}\n"
@@ -661,9 +698,10 @@ def _actualizar_a_cerrado(numero, registro_anterior, separador):
                     f"Acción realizada por: {usuarios.sesion.usuario}"
                 )
         registrar_log("huespedes_cerrados.log", log)
-        
         print("\n✔ Huésped cerrado.")
         return True
+    except ValueError as e:
+        print(f"{e}") 
     except Exception as e:
         print(f"\n❌ Error al cerrar el huésped: {e}")
         return False
@@ -696,18 +734,21 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
     
     if respuesta_pago == "si":
         try:
-            # Marcar consumos como pagados
-            db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero_huesped,))
-            
-            # Actualizar registro del huésped
-            marca_tiempo = marca_de_tiempo()
-            registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {marca_tiempo}"
-            nuevo_registro = registro_actual + separador + registro_pago
-            editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
+            with db.transaccion():
+                # Marcar consumos como pagados
+                db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero_huesped,))
+                
+                # Actualizar registro del huésped
+                marca_tiempo = marca_de_tiempo()
+                registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {marca_tiempo}"
+                nuevo_registro = registro_actual + separador + registro_pago
+                _editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
             
             print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
             return True, nuevo_registro, total_pendiente
         
+        except ValueError as e:
+            print(f"{e}") 
         except Exception as e:
             print(f"\n❌ Error al marcar consumos como pagados: {e}")
             # Se devuelve True para permitir que el checkout continúe si el error no es crítico,
@@ -732,24 +773,39 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
         # Se devuelve True y el registro con la advertencia
         return True, nuevo_registro_con_adv, total_pendiente
 
-def editar_huesped_db(numero, updates_dict):
-    """
-    Actualiza uno o varios campos del huésped dado su número de registro.
-    updates_dict es un diccionario con {campo: valor}.
-    """
+def _editar_huesped_db(numero, updates_dict):
+    # Actualiza uno o varios campos del huésped dado su número de registro.
+    # updates_dict es un diccionario con {campo: valor}.
+
     if not updates_dict:
         print("\n⚠️  No hay cambios para aplicar.")
         return
 
     set_clauses = []
     valores = []
+
+
     for campo, valor in updates_dict.items():
-        set_clauses.append(f"{campo} = ?")
-        valores.append(valor)
+        # 1. Verifica que el nombre del campo esté en la lista blanca
+        if campo in LISTA_BLANCA_HUESPED:
+            # 2. Construye la cláusula SET con el nombre de columna filtrado
+            set_clauses.append(f"{campo} = ?")
+            # 3. Agrega el valor a la lista de parámetros (seguro)
+            valores.append(valor)
+        else:
+            # 4. (Opcional) Notifica o ignora los campos no válidos
+            print(f"⚠️  ADVERTENCIA DE SEGURIDAD: Campo '{campo}' ignorado (no permitido).")
+    
+    # Si después del filtrado no quedan campos para actualizar
+    if not set_clauses:
+        raise ValueError("⚠️  No quedaron campos válidos para actualizar.")
+
+    sql = f"UPDATE HUESPEDES SET {', '.join(set_clauses)} WHERE NUMERO = ?"
 
     # Añadir el número del huésped al final de los valores para la cláusula WHERE
     valores.append(numero)
 
-    sql = f"UPDATE HUESPEDES SET {', '.join(set_clauses)} WHERE NUMERO = ?"
-    db.ejecutar(sql, tuple(valores))
-
+    try:
+        db.ejecutar(sql, tuple(valores))
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el huésped en la DB: {e}")

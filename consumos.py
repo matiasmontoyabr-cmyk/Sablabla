@@ -2,7 +2,7 @@ import re
 import usuarios
 from datetime import datetime
 from db import db
-from huespedes import buscar_huesped, editar_huesped_db
+from huespedes import buscar_huesped, _editar_huesped_db
 from unidecode import unidecode
 from utiles import registrar_log, imprimir_huesped, pedir_entero, pedir_confirmacion, imprimir_productos, formatear_fecha, marca_de_tiempo, opcion_menu
 
@@ -135,7 +135,8 @@ def _guardar_consumos_en_db(consumos, huesped):
     # Guarda la lista final de consumos en la base de datos, actualizando stock y registro.
 
     numero_huesped = huesped["NUMERO"]
-    try:
+
+    with db.transaccion():
         for consumo in consumos:
             fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
             
@@ -158,14 +159,11 @@ def _guardar_consumos_en_db(consumos, huesped):
                 registro_consumo += " (PAGADO)"
             
             nuevo_registro = (registro_anterior + "\n---\n" + registro_consumo) if registro_anterior.strip() else registro_consumo
-            editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
+            _editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
 
-        print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {huesped['HABITACION']}:")
-        for i, consumo in enumerate(consumos):
-            print(f"  {i + 1}. Producto: {consumo['nombre'].capitalize()} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
-
-    except Exception as e:
-        print(f"\n❌ Error al registrar consumos: {e}")
+    print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {huesped['HABITACION']}:")
+    for i, consumo in enumerate(consumos):
+        print(f"  {i + 1}. Producto: {consumo['nombre'].capitalize()} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
 
 @usuarios.requiere_acceso(1)
 def agregar_consumo():
@@ -258,10 +256,10 @@ def eliminar_consumos():
         print(f"{'#':<3} {'FECHA':<12} {'PRODUCTO':<30} {'CANTIDAD':<10}")
         print("-" * 60)
         for idx, consumo in enumerate(consumos, start=1):
-            consumo_id = consumo["NUMERO"]
+            consumo_id = consumo["ID"]
             fecha = consumo["FECHA"]
             producto_id = consumo["PRODUCTO"]
-            producto_nombre = consumo["PRODUCTO_NOMBRE"]
+            producto_nombre = consumo["NOMBRE"]
             cantidad = consumo["CANTIDAD"]
             print(f"{idx:<3} {formatear_fecha(fecha):<12} {producto_nombre:<30} {cantidad:<10}")
 
@@ -284,34 +282,36 @@ def eliminar_consumos():
                 return
         
         try:
-            for i in a_eliminar:
-                consumo_data = consumos[i]
-                consumo_id = consumo_data["ID"]
-                producto_id = consumo_data["PRODUCTO"]
-                producto_nombre = consumo_data["NOMBRE"]
-                cantidad = consumo_data["CANTIDAD"]
+            # Inicia la transacción
+            with db.transaccion():
+                for i in a_eliminar:
+                    consumo_data = consumos[i]
+                    consumo_id = consumo_data["ID"]
+                    producto_id = consumo_data["PRODUCTO"]
+                    producto_nombre = consumo_data["NOMBRE"]
+                    cantidad = consumo_data["CANTIDAD"]
 
-                # Restaurar stock si aplica
-                producto = db.obtener_uno("SELECT STOCK FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
-                if producto and producto["STOCK"] != -1:
-                    nuevo_stock = producto["STOCK"] + cantidad
-                    db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, producto_id))
-                
-                # Eliminar consumo
-                db.ejecutar("DELETE FROM CONSUMOS WHERE ID = ?", (consumo_id,))
+                    # Restaurar stock si aplica
+                    producto = db.obtener_uno("SELECT STOCK FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
+                    if producto and producto["STOCK"] != -1:
+                        nuevo_stock = producto["STOCK"] + cantidad
+                        db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, producto_id))
+                    
+                    # Eliminar consumo
+                    db.ejecutar("DELETE FROM CONSUMOS WHERE ID = ?", (consumo_id,))
 
-                # Log
-                marca_tiempo = marca_de_tiempo()
-                log = (
-                    f"[{marca_tiempo}] CONSUMO ELIMINADO:\n"
-                    f"Huésped: {huesped['NOMBRE']} {huesped['APELLIDO']} | Habitación: {huesped['HABITACION']} | Huesped_ID: {huesped['NUMERO']}\n"
-                    f"Producto: {producto_nombre} (ID: {producto_id}) | Cantidad: {cantidad} | Consumo_ID: {consumo_id}"
-                    f"Acción realizada por: {usuarios.sesion.usuario}"
-                )
-                registrar_log("consumos_eliminados.log", log)
+                    # Log
+                    marca_tiempo = marca_de_tiempo()
+                    log = (
+                        f"[{marca_tiempo}] CONSUMO ELIMINADO:\n"
+                        f"Huésped: {huesped['NOMBRE']} {huesped['APELLIDO']} | Habitación: {huesped['HABITACION']} | Huesped_ID: {huesped['NUMERO']}\n"
+                        f"Producto: {producto_nombre} (ID: {producto_id}) | Cantidad: {cantidad} | Consumo_ID: {consumo_id}"
+                        f"Acción realizada por: {usuarios.sesion.usuario}"
+                    )
+                    registrar_log("consumos_eliminados.log", log)
             print(f"✔ Se eliminaron {len(a_eliminar)} consumos.")
         except Exception as e:
-            print(f"\n❌ Error al eliminar consumos: {e}")
+            print(f"\n❌ La operación de eliminación falló y fue revertida.")
         return
 
 @usuarios.requiere_acceso(1)
@@ -379,11 +379,12 @@ def registrar_pago():
             print("❌ No se seleccionaron consumos válidos.")
             return
         try:
-            for cid in consumos_a_pagar:
-                db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE ID = ?", (cid,))
+            with db.transaccion():
+                for cid in consumos_a_pagar:
+                    db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE ID = ?", (cid,))
             print(f"\n✔ Se marcaron {len(consumos_a_pagar)} consumo(s) como pagados.")
         except Exception as e:
-            print(f"\n❌ Error al registrar el pago: {e}")
+            print(f"\n❌ La operación de registrar pago falló y fue revertida.")
             return
 
 def _recolectar_cortesias():
@@ -492,34 +493,34 @@ def _guardar_y_registrar_cortesias(cortesias, autoriza):
     # Guarda las cortesías en la BD, actualiza el stock y escribe en el archivo de log.
 
     try:
-        for cortesia in cortesias:
-            fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
-            
-            # 1. Insertar en la tabla de CORTESIAS
-            db.ejecutar("INSERT INTO CORTESIAS (PRODUCTO, CANTIDAD, FECHA, AUTORIZA) VALUES (?, ?, ?, ?)",
-                        (cortesia['codigo'], cortesia['cantidad'], fecha, autoriza))
+        with db.transaccion():
+            for cortesia in cortesias:
+                fecha = datetime.now().isoformat(sep=" ", timespec="seconds")
+                
+                # 1. Insertar en la tabla de CORTESIAS
+                db.ejecutar("INSERT INTO CORTESIAS (PRODUCTO, CANTIDAD, FECHA, AUTORIZA) VALUES (?, ?, ?, ?)",
+                            (cortesia['codigo'], cortesia['cantidad'], fecha, autoriza))
 
-            # 2. Actualizar stock del producto
-            if cortesia['stock_anterior'] != -1:
-                nuevo_stock = cortesia['stock_anterior'] - cortesia['cantidad']
-                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, cortesia['codigo']))
+                # 2. Actualizar stock del producto
+                if cortesia['stock_anterior'] != -1:
+                    nuevo_stock = cortesia['stock_anterior'] - cortesia['cantidad']
+                    db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, cortesia['codigo']))
 
-            # 3. Registrar en el archivo de log
-            log = (
-                f"[{marca_de_tiempo()}] CONSUMO DE CORTESÍA:\n"
-                f"Producto: {cortesia['nombre']} (ID: {cortesia['codigo']}) | "
-                f"Cantidad: {cortesia['cantidad']} | "
-                f"Autorizado por: {autoriza.title()} | "
-                f"Registrado por: {usuarios.sesion.usuario}"
-            )
-            registrar_log("consumos_cortesia.log", log)
-
+                # 3. Registrar en el archivo de log
+                log = (
+                    f"[{marca_de_tiempo()}] CONSUMO DE CORTESÍA:\n"
+                    f"Producto: {cortesia['nombre']} (ID: {cortesia['codigo']}) | "
+                    f"Cantidad: {cortesia['cantidad']} | "
+                    f"Autorizado por: {autoriza.title()} | "
+                    f"Registrado por: {usuarios.sesion.usuario}"
+                )
+                registrar_log("consumos_cortesia.log", log)
         print(f"\n✔ Cortesía autorizada por {autoriza.capitalize()} registrada correctamente.")
         for i, cortesia in enumerate(cortesias):
             print(f"  {i + 1}. {cortesia['nombre'].capitalize()}, (x{cortesia['cantidad']})")
 
     except Exception as e:
-        print(f"\n❌ Error al registrar la cortesía: {e}")
+        print(f"\n❌ Hubo un error al registrar la cortesía y fue cancelado.")
 
 @usuarios.requiere_acceso(2)
 def consumo_cortesia():

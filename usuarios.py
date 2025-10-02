@@ -1,10 +1,17 @@
 import bcrypt
+import re
 import sqlite3
 import time
 from db import db
 from functools import wraps
 from getpass import getpass
 from utiles import pedir_entero, pedir_confirmacion, opcion_menu
+
+LONGITUD_MINIMA_PASS = 8 
+
+PATRON_CARACTERES = r'^[a-zA-Z0-9\-\*/\+\.,@]+$' 
+
+SIMBOLO_REQUERIDO = r'[\-\*/\+\.,@]'
 
 class SesionActiva:
     def __init__(self):
@@ -37,7 +44,7 @@ class SesionActiva:
         # Finalmente, verifica si la sesión temporal ha expirado
         duracion = self.duracion_sesion.get(self.nivel_acceso, 300)
         if time.time() - self.ultima_autenticacion > duracion > 0:
-            self.cerrar()
+            self.cerrar(silencioso=True)
             return False, "expirada"
         
         return True, None
@@ -49,13 +56,14 @@ class SesionActiva:
         self.sesion_activa = True
         self.ultima_autenticacion = time.time()
     
-    def cerrar(self):
+    def cerrar(self, silencioso = False):
         """Limpia el estado de la sesión."""
         self.usuario = "Observador"
         self.nivel_acceso = 0
         self.sesion_activa = False
         self.ultima_autenticacion = 0
-        print("\n👋 Sesión cerrada.")
+        if not silencioso:
+            print("\n🔐 Sesión cerrada.")
     
     def refrescar(self):
         """Actualiza el tiempo de la última autenticación."""
@@ -126,7 +134,7 @@ def requiere_acceso(nivel_requerido):
                     print("\n⚠️  Para esta tarea, tenés que iniciar sesión.")
                 # Si la sesión está expirada
                 if motivo == "expirada":
-                    print("\n⚠️  ⏰Tu sesión expiró, volvé a iniciar sesión.")
+                    print("\n⏰ Tu sesión expiró, volvé a iniciar sesión.")
                 # Se solicita login
                 if not login_interactivo():
                     print("\n❌ No se pudo iniciar sesión.")
@@ -134,7 +142,7 @@ def requiere_acceso(nivel_requerido):
                 # volver a verificar después del login
                 ok, motivo = sesion.verificar_acceso(nivel_requerido)
                 if not ok:
-                    print("\n❌ Este usuario no cuenta con los permisos requeridos para esta acción.")
+                    print("\n⚠️  Este usuario no cuenta con los permisos requeridos para esta acción.")
                     return
             # si pasó todas las verificaciones → ejecutar la función real
             sesion.refrescar()
@@ -142,10 +150,33 @@ def requiere_acceso(nivel_requerido):
         return wrapper
     return decorador
 
+def _validar_contrasena(contrasena):
+    # 1. Valida que la contraseña no esté vacía
+    if not contrasena or not contrasena.strip(): 
+        print("\n❌ Error: La contraseña no puede estar vacía.")
+        return False
+    
+    # 2. Verifica si la contraseña cumple con los requisitos mínimos de seguridad.
+    if len(contrasena) < LONGITUD_MINIMA_PASS:
+        print(f"\n⚠️  La contraseña debe tener al menos {LONGITUD_MINIMA_PASS} caracteres.")
+        return False
+
+    # 3. Validación de Caracteres Permitidos
+    # Nota: Los símbolos en REGEX como - / * + deben ser escapados, por eso se usa '\-' y '*/+'
+    if not re.match(PATRON_CARACTERES, contrasena):
+        print("\n⚠️  Solo se permiten letras, números, y los símbolos: - * / + . , @")
+        return False
+    
+    # 4. Validación de Carácter Especial REQUERIDO (DEBE tener al menos uno de ellos)
+    if not re.search(SIMBOLO_REQUERIDO, contrasena):
+        print("\n⚠️  La contraseña debe contener al menos uno de los siguientes símbolos: - * / + . , @")
+        return False
+    return True
+
 @requiere_acceso(3)
 def crear_usuario():
     while True:
-        usuario = input("👤 Ingresa el nombre de usuario ó (0) para salir: ").strip()
+        usuario = input("👤 Ingresá el nombre de usuario ó (0) para salir: ").strip()
         if usuario == "0":
             print("\n❌ Operación cancelada.")
             return
@@ -160,15 +191,25 @@ def crear_usuario():
         
         # Si no existe, salimos del bucle para continuar con la creación
         break
-    contraseña = getpass("🔑 Ingresa la contraseña: ")
+    while True:
+        contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres y al menos uno de los siguientes símbolos: - * / + . , @: ").strip()
+        
+        if not _validar_contrasena(contrasena):
+            continue # Vuelve a pedir la contraseña
+        confirmacion = getpass("🔑 Confirmá la contraseña: ").strip()
+        if contrasena != confirmacion:
+            print("\n❌ Las contraseñas no coinciden. Intentalo denuevo.")
+            continue
+        break
     while True:
         nivel_de_acceso = int(pedir_entero("Nivel de acceso (0, 1, 2): ", minimo=0, maximo=2))
         if nivel_de_acceso in [0, 1, 2]:
             # Encriptar la contraseña
-            contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             try:
-                db.ejecutar("INSERT INTO USUARIOS (USUARIO, CONTRASEÑA_HASH, NIVEL_DE_ACCESO) VALUES (?, ?, ?)", 
-                            (usuario, contraseña_hash, nivel_de_acceso))
+                with db.transaccion():
+                    db.ejecutar("INSERT INTO USUARIOS (USUARIO, CONTRASEÑA_HASH, NIVEL_DE_ACCESO) VALUES (?, ?, ?)", 
+                                (usuario, contraseña_hash, nivel_de_acceso))
                 print(f"\n✔ Usuario '{usuario}' de nivel de acceso {nivel_de_acceso} creado exitosamente.")
                 break
             except sqlite3.IntegrityError:
@@ -192,7 +233,7 @@ def mostrar_usuarios():
 @requiere_acceso(3)
 def editar_usuario():
     while True:
-        usuario = input("👤 Ingresa el nombre de usuario a editar, (*) para buscar ó (0) para cancelar: ").strip()
+        usuario = input("👤 Ingresá el nombre de usuario a editar, (*) para buscar ó (0) para cancelar: ").strip()
         if usuario == "0":
             print("\n❌ Operación cancelada.")
             return
@@ -213,10 +254,20 @@ def editar_usuario():
                 print("\n❌ Operación cancelada.")
                 return
             if opcion_editar == 1:
-                contraseña = getpass("Ingresa la nueva contraseña: ")
+                while True:
+                    contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres y al menos uno de los siguientes símbolos: - * / + . , @: ").strip()
+                    
+                    if not _validar_contrasena(contrasena):
+                        continue # Vuelve a pedir la contraseña
+                    confirmacion = getpass("🔑 Confirmá la contraseña: ").strip()
+                    if contrasena != confirmacion:
+                        print("\n❌ Las contraseñas no coinciden. Intentalo denuevo.")
+                        continue
+                    break
                 try:
-                    contraseña_hash = bcrypt.hashpw(contraseña.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                    db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
+                    with db.transaccion():
+                        contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                        db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
                     print(f"\n✔ Contraseña de '{usuario}' modificada.")
                 except Exception as e:
                     print(f"\n❌ Error al modificar la contraseña de '{usuario}': {e}")
@@ -224,7 +275,8 @@ def editar_usuario():
             elif opcion_editar == 2:
                 nuevo_nivel = pedir_entero("Ingresa el nuevo nivel de acceso (0, 1, 2): ", minimo=0, maximo=2)
                 try:
-                    db.ejecutar("UPDATE USUARIOS SET NIVEL_DE_ACCESO=? WHERE USUARIO=?", (nuevo_nivel, usuario))
+                    with db.transaccion():
+                        db.ejecutar("UPDATE USUARIOS SET NIVEL_DE_ACCESO=? WHERE USUARIO=?", (nuevo_nivel, usuario))
                     print(f"\n✔ Nivel de acceso de '{usuario}' modificado a {nuevo_nivel}.")
                 except Exception as e:
                     print(f"\n❌ Error al modificar el nivel de acceso de '{usuario}': {e}")
@@ -237,7 +289,8 @@ def editar_usuario():
                         continue
                     else:
                         try:
-                            db.ejecutar("UPDATE USUARIOS SET USUARIO=? WHERE USUARIO=?", (nuevo_nombre, usuario))
+                            with db.transaccion():
+                                db.ejecutar("UPDATE USUARIOS SET USUARIO=? WHERE USUARIO=?", (nuevo_nombre, usuario))
                             print(f"\n✔ Nombre de usuario de '{usuario}' modificado a {nuevo_nombre}.")
                         except Exception as e:
                             print(f"\n❌ Error al modificar el nombre de usuario de '{usuario}': {e}")
@@ -262,7 +315,8 @@ def eliminar_usuario():
         if confirmacion == "si":
             # Elimina un usuario de la base de datos.
             try:
-                db.ejecutar("DELETE FROM USUARIOS WHERE USUARIO=?", (usuario,))
+                with db.transaccion():
+                    db.ejecutar("DELETE FROM USUARIOS WHERE USUARIO=?", (usuario,))
                 print(f"\n✔ Usuario '{usuario}' eliminado.")
             except Exception as e:
                 print(f"\n❌ Error al eliminar el usuario '{usuario}': {e}")
