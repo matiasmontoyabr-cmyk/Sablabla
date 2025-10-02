@@ -349,7 +349,6 @@ def habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=None):
             h_out = date.fromisoformat(h_out)
         except ValueError:
             # Si las fechas en la DB no son ISO, intenta el formato DD/MM/YY
-            from datetime import datetime
             h_in = datetime.strptime(h_in, '%d/%m/%y').date()
             h_out = datetime.strptime(h_out, '%d/%m/%y').date()
         # Verificar solapamiento

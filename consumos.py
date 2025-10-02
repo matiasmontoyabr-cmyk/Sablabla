@@ -556,7 +556,7 @@ def _guardar_y_registrar_cortesias(cortesias, autoriza):
             print(f"  {i + 1}. {cortesia['nombre'].capitalize()}, (x{cortesia['cantidad']})")
 
     except Exception as e:
-        print(f"\n❌ Hubo un error al registrar la cortesía y fue cancelado.")
+        print(f"\n❌ Hubo un error al registrar la cortesía y fue cancelado: {e}")
 
 @usuarios.requiere_acceso(2)
 def consumo_cortesia():
