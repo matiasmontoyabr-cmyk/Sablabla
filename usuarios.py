@@ -247,55 +247,85 @@ def editar_usuario():
         if usuario_db is None:
             print(f"\n⚠️  Error: El usuario '{usuario}' no existe.")
             continue # Vuelve a pedir el nombre de usuario
-        leyenda = "¿Qué querés editar? (1) La contraseña, (2) el nivel de acceso, (3) el nombre ó (0) para cancelar: "
-        while True:
-            opcion_editar = opcion_menu(leyenda, cero=True, minimo=1, maximo=3)
-            if opcion_editar == 0:
-                print("\n❌ Operación cancelada.")
-                return
-            if opcion_editar == 1:
-                while True:
-                    contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres y al menos uno de los siguientes símbolos: - * / + . , @: ").strip()
-                    
-                    if not _validar_contrasena(contrasena):
-                        continue # Vuelve a pedir la contraseña
-                    confirmacion = getpass("🔑 Confirmá la contraseña: ").strip()
-                    if contrasena != confirmacion:
-                        print("\n❌ Las contraseñas no coinciden. Intentalo denuevo.")
-                        continue
-                    break
-                try:
-                    with db.transaccion():
-                        contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                        db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
-                    print(f"\n✔ Contraseña de '{usuario}' modificada.")
-                except Exception as e:
-                    print(f"\n❌ Error al modificar la contraseña de '{usuario}': {e}")
-                return
-            elif opcion_editar == 2:
-                nuevo_nivel = pedir_entero("Ingresa el nuevo nivel de acceso (0, 1, 2): ", minimo=0, maximo=2)
-                try:
-                    with db.transaccion():
-                        db.ejecutar("UPDATE USUARIOS SET NIVEL_DE_ACCESO=? WHERE USUARIO=?", (nuevo_nivel, usuario))
-                    print(f"\n✔ Nivel de acceso de '{usuario}' modificado a {nuevo_nivel}.")
-                except Exception as e:
-                    print(f"\n❌ Error al modificar el nivel de acceso de '{usuario}': {e}")
-                return
-            elif opcion_editar == 3:
-                while True:
-                    nuevo_nombre = input("Ingresa el nuevo nombre de usuario: ").strip()
-                    if not nuevo_nombre:
-                        print("\n⚠️  El nombre de usuario no puede estar vacío.")
-                        continue
-                    else:
-                        try:
-                            with db.transaccion():
-                                db.ejecutar("UPDATE USUARIOS SET USUARIO=? WHERE USUARIO=?", (nuevo_nombre, usuario))
-                            print(f"\n✔ Nombre de usuario de '{usuario}' modificado a {nuevo_nombre}.")
-                        except Exception as e:
-                            print(f"\n❌ Error al modificar el nombre de usuario de '{usuario}': {e}")
-                        break
-                return
+        break
+    leyenda = "¿Qué querés editar? (1) La contraseña, (2) el nivel de acceso, (3) el nombre ó (0) para cancelar: "
+    while True:
+        opcion_editar = opcion_menu(leyenda, cero=True, minimo=1, maximo=3)
+        if opcion_editar == 0:
+            print("\n❌ Operación cancelada.")
+            return
+        if opcion_editar == 1:
+            _editar_contrasena(usuario)
+        elif opcion_editar == 2:
+            _editar_nivel(usuario)
+        elif opcion_editar == 3:
+            _editar_nombre(usuario)
+            
+        # Después de intentar editar cualquier campo, terminamos la función.
+        return  
+
+def _editar_contrasena(usuario):
+    """Maneja la lógica de validación y actualización de la contraseña."""
+    while True:
+        # Se asume que getpass y _validar_contrasena están definidas globalmente
+        contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres y al menos uno de los siguientes símbolos: - * / + . , @: ").strip()
+        
+        if not _validar_contrasena(contrasena):
+            continue 
+            
+        confirmacion = getpass("🔑 Confirmá la contraseña: ").strip()
+        if contrasena != confirmacion:
+            print("\n❌ Las contraseñas no coinciden. Intentalo denuevo.")
+            continue
+            
+        break # Si todo es válido
+
+    try:
+        # Se asume que bcrypt está disponible
+        contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        with db.transaccion():
+            db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
+        print(f"\n✔ Contraseña de '{usuario}' modificada.")
+    except Exception as e:
+        print(f"\n❌ Error al modificar la contraseña de '{usuario}': {e}")
+    # Nota: No necesitamos un 'return' aquí, la función principal se encarga de salir.
+
+def _editar_nivel(usuario):
+    """Maneja la lógica de validación y actualización del nivel de acceso."""
+    # Se asume que pedir_entero está disponible
+    nuevo_nivel = pedir_entero("Ingresa el nuevo nivel de acceso (0, 1, 2): ", minimo=0, maximo=2)
+    
+    if nuevo_nivel is None: # Si pedir_entero no pudo obtener un valor válido o fue cancelado
+        return
+        
+    try:
+        with db.transaccion():
+            db.ejecutar("UPDATE USUARIOS SET NIVEL_DE_ACCESO=? WHERE USUARIO=?", (nuevo_nivel, usuario))
+        print(f"\n✔ Nivel de acceso de '{usuario}' modificado a {nuevo_nivel}.")
+    except Exception as e:
+        print(f"\n❌ Error al modificar el nivel de acceso de '{usuario}': {e}")
+
+def _editar_nombre(usuario_actual):
+    """Maneja la lógica de validación y actualización del nombre de usuario."""
+    while True:
+        nuevo_nombre = input("Ingresa el nuevo nombre de usuario: ").strip()
+        
+        if not nuevo_nombre:
+            print("\n⚠️  El nombre de usuario no puede estar vacío.")
+            continue
+            
+        # Opcional: Podrías añadir una validación aquí para chequear si el nuevo_nombre ya existe en la BD
+        
+        try:
+            with db.transaccion():
+                # Actualizamos usando el usuario_actual como filtro
+                db.ejecutar("UPDATE USUARIOS SET USUARIO=? WHERE USUARIO=?", (nuevo_nombre, usuario_actual))
+            print(f"\n✔ Nombre de usuario de '{usuario_actual}' modificado a {nuevo_nombre}.")
+        except Exception as e:
+            # Captura un error potencial si el nuevo_nombre ya existe (violación de unicidad)
+            print(f"\n❌ Error al modificar el nombre de usuario de '{usuario_actual}': {e}")
+        
+        return # Sale del bucle y de la función después del intento de edición
 
 @requiere_acceso(3)
 def eliminar_usuario():

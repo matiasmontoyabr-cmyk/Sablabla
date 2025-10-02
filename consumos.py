@@ -329,63 +329,99 @@ def registrar_pago():
         if not huesped:
             print("❌ Huesped no encontrado en esa habmitación.")
             continue
+        break
+    consumos_pendientes = _obtener_y_mostrar_consumos(huesped)
+    
+    if consumos_pendientes:
+        # Procesar la selección del usuario y ejecutar la transacción
+        _procesar_pago(consumos_pendientes)
+        
+    return
 
-        numero_huesped = huesped["NUMERO"]
-        query = """
-            SELECT C.ID, C.FECHA, P.NOMBRE, C.CANTIDAD, P.PRECIO
-            FROM CONSUMOS C
-            JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
-            WHERE C.HUESPED = ? AND C.PAGADO = 0
-            ORDER BY C.FECHA DESC
-        """
-        consumos = db.obtener_todos(query, (numero_huesped,))
-        if not consumos:
-            # Verificar si hay consumos en total para ese huésped
-            todos = db.obtener_todos("SELECT ID FROM CONSUMOS WHERE HUESPED = ?", (numero_huesped,))
-            if not todos:
-                print("✔ Esta habitación no tiene consumos registrados.")
-            else:
-                print("✔ Todos los consumos ya están marcados como pagados.")
-            return
+def _obtener_y_mostrar_consumos(huesped):
+    """
+    Obtiene los consumos pendientes de un huésped y los imprime.
+    Retorna la lista de consumos pendientes o None si no hay.
+    """
+    numero_huesped = huesped["NUMERO"]
+    habitacion = huesped["HABITACION"]
+    
+    query = """
+        SELECT C.ID, C.FECHA, P.NOMBRE, C.CANTIDAD, P.PRECIO
+        FROM CONSUMOS C
+        JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
+        WHERE C.HUESPED = ? AND C.PAGADO = 0
+        ORDER BY C.FECHA DESC
+    """
+    consumos = db.obtener_todos(query, (numero_huesped,))
 
-        print(f"\nConsumos pendientes de pago para {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()} (habitación {habitacion}):\n")
-        print(f"{'#':<3} {'FECHA':<20} {'PRODUCTO':<25} {'CANT':<5} {'TOTAL':>10}")
-        print("-" * 70)
+    if not consumos:
+        # Chequeo para dar un mensaje más específico
+        todos = db.obtener_todos("SELECT ID FROM CONSUMOS WHERE HUESPED = ?", (numero_huesped,))
+        if not todos:
+            print("✔ Esta habitación no tiene consumos registrados.")
+        else:
+            print("✔ Todos los consumos ya están marcados como pagados.")
+        return None # Indica que no hay nada que pagar
 
-        for idx, consumo in enumerate(consumos, start=1):
-            cid = consumo["NUMERO"]
-            fecha = consumo["FECHA"]
-            producto = consumo["PRODUCTO"]
-            cant = consumo["CANTIDAD"]
-            precio = consumo["PRECIO"]
-            total = cant * precio
-            print(f"{idx:<3} {fecha:<20} {producto:<25} {cant:<5} {total:>10.2f}")
+    # Impresión de la lista de consumos
+    print(f"\nConsumos pendientes de pago para {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()} (habitación {habitacion}):\n")
+    print(f"{'#':<3} {'FECHA':<20} {'PRODUCTO':<25} {'CANT':<5} {'TOTAL':>10}")
+    print("-" * 70)
 
-        seleccion = input("\nIngresá los números de los consumos a marcar como pagos separados por coma (ej: 1,3,4), ó (0) para cancelar: ").strip()
-        if seleccion == "0":
-            print("❌ Operación cancelada.")
-            return
+    for idx, consumo in enumerate(consumos, start=1):
+        # Usamos 'ID' por convención, pero el query retorna 'C.ID'
+        cid = consumo["ID"] # Se asume que el ORM lo renombra a 'ID' si el query lo pide
+        fecha = consumo["FECHA"]
+        producto = consumo["NOMBRE"] # Usamos NOMBRE en lugar de PRODUCTO para el JOIN
+        cant = consumo["CANTIDAD"]
+        precio = consumo["PRECIO"]
+        total = cant * precio
+        # Aquí también estamos asumiendo que el campo C.ID se mapea en el diccionario por ID
+        print(f"{idx:<3} {fecha:<20} {producto:<25} {cant:<5} {total:>10.2f}")
+        
+    return consumos
 
-        indices = [s.strip() for s in seleccion.split(",") if s.strip().isdigit()]
-        consumos_a_pagar = []
-        for i in indices:
+def _procesar_pago(consumos_pendientes):
+    """
+    Maneja la interacción para seleccionar y marcar los consumos como pagados.
+    """
+    seleccion = input("\nIngresá los números de los consumos a marcar como pagos separados por coma (ej: 1,3,4), ó (0) para cancelar: ").strip()
+    
+    if seleccion == "0":
+        print("❌ Operación cancelada.")
+        return
+
+    # 1. Parsing y validación de índices
+    indices_str = [s.strip() for s in seleccion.split(",") if s.strip().isdigit()]
+    
+    consumos_a_pagar_ids = []
+    
+    for i in indices_str:
+        try:
             idx = int(i)
-            if 1 <= idx <= len(consumos):
-                consumos_a_pagar.append(consumos[idx - 1]["ID"])  # ID del consumo
+            # Chequea si el índice está dentro del rango válido (1 a len(consumos))
+            if 1 <= idx <= len(consumos_pendientes):
+                # El ID de la BD es lo que necesitamos para la transacción
+                consumos_a_pagar_ids.append(consumos_pendientes[idx - 1]["ID"]) 
             else:
                 print(f"❌ Índice fuera de rango: {idx}")
+        except ValueError:
+            # Esto no debería ocurrir si filtramos con isdigit(), pero es buena práctica
+            pass 
 
-        if not consumos_a_pagar:
-            print("❌ No se seleccionaron consumos válidos.")
-            return
-        try:
-            with db.transaccion():
-                for cid in consumos_a_pagar:
-                    db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE ID = ?", (cid,))
-            print(f"\n✔ Se marcaron {len(consumos_a_pagar)} consumo(s) como pagados.")
-        except Exception as e:
-            print(f"\n❌ La operación de registrar pago falló y fue revertida.")
-            return
+    if not consumos_a_pagar_ids:
+        print("❌ No se seleccionaron consumos válidos.")
+        return
+
+    # 2. Ejecución de la transacción
+    try:
+        with db.transaccion():
+            for cid in consumos_a_pagar_ids:
+                db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE ID = ?", (cid,))
+        print(f"\n✔ Se marcaron {len(consumos_a_pagar_ids)} consumo(s) como pagados.")
+    except Exception as e:
+        print(f"\n❌ La operación de registrar pago falló y fue revertida. Error: {e}")
 
 def _recolectar_cortesias():
     # Recolecta productos para cortesía en un bucle interactivo.

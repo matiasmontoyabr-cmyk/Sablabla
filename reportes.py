@@ -155,11 +155,6 @@ def reporte_ocupacion():
         if len(label_base) > ANCHO_ETIQUETA:
             ANCHO_ETIQUETA = len(label_base)
 
-    # El ancho total de la etiqueta será: [Base Alineada] + [|] + [Espacio]
-    # La alineación la manejamos con el ljust.
-    ANCHO_BASE = ANCHO_ETIQUETA + 1 # Añadimos 1 para un espacio interno extra si es necesario.
-                                     # Usaremos ANCHO_ETIQUETA directamente para el padding.
-
     # Traer huéspedes abiertos y programados
     huespedes = db.obtener_todos("""
         SELECT NUMERO, NOMBRE, APELLIDO, HABITACION, CHECKIN, CHECKOUT, ESTADO
@@ -170,55 +165,12 @@ def reporte_ocupacion():
     # Inicializar mapa de ocupación (habitaciones 1..7)
     ocupacion = {hab: [" . " for _ in range(dias)] for hab in range(1, 8)}
 
+    # Proceso de marcaje: Se delega toda la complejidad a la función auxiliar
     for h in huespedes:
-        hab = h["HABITACION"]
-        if not hab or hab == 0:
-            continue
-        try:
-            f_in = date.fromisoformat(h["CHECKIN"])
-            f_out = date.fromisoformat(h["CHECKOUT"])
-        except ValueError:
-            continue
-
-        estado = h["ESTADO"]
-        
-        # --- Marcar días de estadía (X o P) ---
-        for i in range(dias):
-            d = hoy + timedelta(days=i)
-
-            # Usamos f_in < d < f_out para NO incluir el día de CI/CO en esta sección
-            # Si incluimos f_in, la lógica de CI/CO la sobreescribirá más adelante.
-            # Sin embargo, mantener la lógica original f_in <= d < f_out es más simple
-            # y dejamos que el CI/CO sobrescriba.
-            if f_in <= d < f_out:
-                if estado == "ABIERTO":
-                    ocupacion[hab][i] = " X "
-                elif ocupacion[hab][i] == " . ": # Solo si está libre, para no sobreescribir otro estado
-                    ocupacion[hab][i] = " P "
-
-        # --- Marcar Checkout(CO) o solapamiento (O/I) ---
-        if 0 <= (f_out - hoy).days < dias: 
-            idx = (f_out - hoy).days
-        
-            # Si el día ya tiene un CI de una reserva PROCESADA ANTERIORMENTE.
-            if ocupacion[hab][idx] == "CI ":
-                ocupacion[hab][idx] = "O/I" # Sobrescribe CI con O/I
-            # Si el día no está marcado como CI (es libre o está marcado por P/X/otra cosa), 
-            # lo marcamos como CO. Esto es seguro porque la lógica P/X ya corrió.
-            elif ocupacion[hab][idx] == " . ": 
-                 ocupacion[hab][idx] = "CO " 
-
-        # --- Marcar Check-In (CI) o Solapamiento (O/I) ---
-        if 0 <= (f_in - hoy).days < dias:
-            idx = (f_in - hoy).days
-            
-            # Chequear si el día ya fue marcado como CO por OTRA reserva.
-            if ocupacion[hab][idx] == "CO ":
-                # Si otra reserva ya marcó CO, es un solapamiento Check-Out/Check-In
-                ocupacion[hab][idx] = "O/I" 
-            else:
-                # Si no hay CO, lo marcamos como CI. Esto Sobreescribirá cualquier P/X.
-                ocupacion[hab][idx] = "CI " 
+        # Aquí se llama a la función con la complejidad ciclomática (del bucle huésped)
+        _marcar_reserva_en_mapa(ocupacion, h, hoy, dias)
+        # Nota: La validación de errores de fecha (try/except) ahora está en la auxiliar, 
+        # simplificando este bucle.
 
     # -------------------------------------------------------------
     # IMPRESIÓN Y ALINEACIÓN
@@ -243,6 +195,52 @@ def reporte_ocupacion():
 
     print("\nLeyenda: CI=Checkin, CO=Checkout, O/I=Checkou/in solapado, X=Ocupado, P=Programado, .. = Libre")
     input("\nPresione Enter para continuar...")
+
+def _marcar_reserva_en_mapa(ocupacion, h, hoy, dias):
+    """
+    Aplica la lógica de una única reserva (h) al mapa de ocupación.
+    Retorna True si el marcaje fue exitoso, False si hubo error de formato de fecha.
+    """
+    hab = h["HABITACION"]
+    if not hab or hab == 0:
+        return True # Se ignora, no es un error
+
+    try:
+        f_in = date.fromisoformat(h["CHECKIN"])
+        f_out = date.fromisoformat(h["CHECKOUT"])
+    except ValueError:
+        return False # Error en el formato de fecha
+
+    estado = h["ESTADO"]
+    
+    # 1. Marcar días de estadía (X o P)
+    for i in range(dias):
+        d = hoy + timedelta(days=i)
+        
+        if f_in <= d < f_out: # Checkeamos todos los días de la reserva
+            if estado == "ABIERTO":
+                ocupacion[hab][i] = " X "
+            # 'PROGRAMADO' solo marca si la celda está libre (" . ")
+            elif ocupacion[hab][i] == " . ": 
+                ocupacion[hab][i] = " P "
+
+    # 2. Marcar Checkout (CO) o Solapamiento (O/I)
+    idx_out = (f_out - hoy).days
+    if 0 <= idx_out < dias: 
+        if ocupacion[hab][idx_out] == "CI ":
+            ocupacion[hab][idx_out] = "O/I" # Sobrescribe CI
+        elif ocupacion[hab][idx_out] == " . ": 
+            ocupacion[hab][idx_out] = "CO " 
+
+    # 3. Marcar Check-In (CI) o Solapamiento (O/I)
+    idx_in = (f_in - hoy).days
+    if 0 <= idx_in < dias:
+        if ocupacion[hab][idx_in] == "CO ":
+            ocupacion[hab][idx_in] = "O/I" # Sobrescribe CO
+        else:
+            ocupacion[hab][idx_in] = "CI " # Sobrescribe P/X/o libre
+
+    return True
 
 @usuarios.requiere_acceso(2)
 def ver_logs():
