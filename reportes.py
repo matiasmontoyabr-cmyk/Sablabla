@@ -137,7 +137,11 @@ def reporte_inventario():
     print("\n⚠️️  Productos con bajo stock:")
     print(f"{'CÓDIGO':<7} {'NOMBRE':<30} {'STOCK':<10} {'ALERTA':<10}")
     print("-" * 60)
-    for codigo, nombre, stock, alerta in bajo_stock:
+    for producto in bajo_stock:
+        codigo = producto["CODIGO"]
+        nombre = producto["NOMBRE"]
+        stock = producto["STOCK"]
+        alerta = producto["ALERTA"]
         print(f"{codigo:<7} {nombre:<30} {stock:<10} {alerta:<10}")
     input("\nPresione Enter para continuar...")
 

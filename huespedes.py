@@ -253,7 +253,7 @@ def realizar_checkout():
                 print(f"{'HAB':<5} {'APELLIDO':<20} {'NOMBRE':<20}")
                 print("-" * 45)
                 for huesped in abiertas:
-                    print(f"{huesped["HABITACION"]:<5} {huesped["APELLIDO"].title():<20} {huesped["NOMBRE"].title():<20}")
+                    print(f"{huesped['HABITACION']:<5} {huesped['APELLIDO'].title():<20} {huesped['NOMBRE'].title():<20}")
                 print("-" * 45)
             continue
 
