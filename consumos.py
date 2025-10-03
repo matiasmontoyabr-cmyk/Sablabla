@@ -6,6 +6,24 @@ from huespedes import buscar_huesped, _editar_huesped_db
 from unidecode import unidecode
 from utiles import registrar_log, imprimir_huesped, pedir_entero, pedir_confirmacion, imprimir_productos, formatear_fecha, marca_de_tiempo, opcion_menu
 
+
+@usuarios.requiere_acceso(1)
+def agregar_consumo():
+    # Función principal para coordinar el proceso de agregar consumos a un huésped.
+    huesped = _seleccionar_huesped()
+    if not huesped:
+        print("\n❌ Operación cancelada.")
+        return
+
+    consumos_pendientes = _recolectar_consumos(huesped["NUMERO"])
+    
+    consumos_finales = _editar_consumos_agregados(consumos_pendientes)
+
+    if consumos_finales:
+        _guardar_consumos_en_db(consumos_finales, huesped)
+    else:
+        print("\n❌ No se registraron nuevos consumos.")
+
 def _seleccionar_huesped():
     # Gestiona la selección de un huésped. Devuelve el diccionario del huésped
     # o None si se cancela la operación.
@@ -146,9 +164,21 @@ def _guardar_consumos_en_db(consumos, huesped):
             
             # 2. Actualizar stock del producto
             if consumo['stock_anterior'] != -1:
-                nuevo_stock = consumo['stock_anterior'] - consumo['cantidad']
-                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, consumo['codigo']))
-            
+                grupo_info = db.obtener_uno("SELECT GRUPO FROM PRODUCTOS WHERE CODIGO = ?", (consumo['codigo'],))
+                grupo = grupo_info["GRUPO"] if grupo_info else None
+
+                if grupo:
+                    # Buscar todos los productos en el mismo grupo
+                    equivalentes = db.obtener_todos("SELECT CODIGO, STOCK FROM PRODUCTOS WHERE GRUPO = ?", (grupo,))
+                    for eq in equivalentes:
+                        if eq["STOCK"] != -1:  # no tocar stock infinito
+                            nuevo_stock = eq["STOCK"] - consumo['cantidad']
+                            db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, eq["CODIGO"]))
+                else:
+                    # Producto sin grupo → descuenta solo a él
+                    nuevo_stock = consumo['stock_anterior'] - consumo['cantidad']
+                    db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, consumo['codigo']))
+
             # 3. Abre el registro del huésped
             registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero_huesped,))
             registro_anterior = str(registro_anterior_data["REGISTRO"] or "") if registro_anterior_data else ""
@@ -164,23 +194,6 @@ def _guardar_consumos_en_db(consumos, huesped):
     print(f"✔ Consumos agregados para {huesped['NOMBRE'].capitalize()} {huesped['APELLIDO'].capitalize()}, de la habitación {huesped['HABITACION']}:")
     for i, consumo in enumerate(consumos):
         print(f"  {i + 1}. Producto: {consumo['nombre'].capitalize()} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
-
-@usuarios.requiere_acceso(1)
-def agregar_consumo():
-    # Función principal para coordinar el proceso de agregar consumos a un huésped.
-    huesped = _seleccionar_huesped()
-    if not huesped:
-        print("\n❌ Operación cancelada.")
-        return
-
-    consumos_pendientes = _recolectar_consumos(huesped["NUMERO"])
-    
-    consumos_finales = _editar_consumos_agregados(consumos_pendientes)
-
-    if consumos_finales:
-        _guardar_consumos_en_db(consumos_finales, huesped)
-    else:
-        print("\n❌ No se registraron nuevos consumos.")
 
 @usuarios.requiere_acceso(0)
 def ver_consumos():
@@ -293,9 +306,22 @@ def eliminar_consumos():
 
                     # Restaurar stock si aplica
                     producto = db.obtener_uno("SELECT STOCK FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
-                    if producto and producto["STOCK"] != -1:
-                        nuevo_stock = producto["STOCK"] + cantidad
-                        db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, producto_id))
+                    # Restaurar stock (producto y equivalentes de su grupo)
+                    grupo_info = db.obtener_uno("SELECT GRUPO FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
+                    grupo = grupo_info["GRUPO"] if grupo_info else None
+
+                    if grupo:
+                        # Restaurar stock a todos los productos del grupo
+                        equivalentes = db.obtener_todos("SELECT CODIGO, STOCK FROM PRODUCTOS WHERE GRUPO = ?", (grupo,))
+                        for eq in equivalentes:
+                            if eq["STOCK"] != -1:  # no tocar stock infinito
+                                nuevo_stock = eq["STOCK"] + cantidad
+                                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, eq["CODIGO"]))
+                    else:
+                        # Producto sin grupo → solo él
+                        if producto and producto["STOCK"] != -1:
+                            nuevo_stock = producto["STOCK"] + cantidad
+                            db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, producto_id))
                     
                     # Eliminar consumo
                     db.ejecutar("DELETE FROM CONSUMOS WHERE ID = ?", (consumo_id,))
@@ -311,7 +337,7 @@ def eliminar_consumos():
                     registrar_log("consumos_eliminados.log", log)
             print(f"✔ Se eliminaron {len(a_eliminar)} consumos.")
         except Exception as e:
-            print(f"\n❌ La operación de eliminación falló y fue revertida.")
+            print(f"\n❌ La operación de eliminación falló y fue revertida: {e}")
         return
 
 @usuarios.requiere_acceso(1)
@@ -371,7 +397,6 @@ def _obtener_y_mostrar_consumos(huesped):
 
     for idx, consumo in enumerate(consumos, start=1):
         # Usamos 'ID' por convención, pero el query retorna 'C.ID'
-        cid = consumo["ID"] # Se asume que el ORM lo renombra a 'ID' si el query lo pide
         fecha = consumo["FECHA"]
         producto = consumo["NOMBRE"] # Usamos NOMBRE en lugar de PRODUCTO para el JOIN
         cant = consumo["CANTIDAD"]
@@ -423,7 +448,30 @@ def _procesar_pago(consumos_pendientes):
     except Exception as e:
         print(f"\n❌ La operación de registrar pago falló y fue revertida. Error: {e}")
 
-def _recolectar_cortesias():
+@usuarios.requiere_acceso(2)
+def consumo_cortesia():
+    # Coordina el proceso de registrar un consumo de cortesía.
+    # 1. Recolectar productos
+    cortesias_iniciales = _recolectar_cortesias()
+    if not cortesias_iniciales:
+        print("\n❌ No se agregaron productos. Operación finalizada.")
+        return
+
+    # 2. Permitir edición de la lista
+    cortesias_finales = _editar_lista_cortesias(cortesias_iniciales)
+    if not cortesias_finales:
+        print("\n❌ No quedaron cortesías para registrar.")
+        return
+
+    # 3. Obtener autorización
+    autorizante = _obtener_autorizante()
+    if not autorizante:
+        return # Mensaje de cancelación ya mostrado en la función auxiliar
+
+    # 4. Guardar y registrar todo
+    _guardar_y_registrar_cortesias(cortesias_finales, autorizante)
+
+    def _recolectar_cortesias():
     # Recolecta productos para cortesía en un bucle interactivo.
     # Devuelve una lista de diccionarios de cortesías.
 
@@ -557,26 +605,3 @@ def _guardar_y_registrar_cortesias(cortesias, autoriza):
 
     except Exception as e:
         print(f"\n❌ Hubo un error al registrar la cortesía y fue cancelado: {e}")
-
-@usuarios.requiere_acceso(2)
-def consumo_cortesia():
-    # Coordina el proceso de registrar un consumo de cortesía.
-    # 1. Recolectar productos
-    cortesias_iniciales = _recolectar_cortesias()
-    if not cortesias_iniciales:
-        print("\n❌ No se agregaron productos. Operación finalizada.")
-        return
-
-    # 2. Permitir edición de la lista
-    cortesias_finales = _editar_lista_cortesias(cortesias_iniciales)
-    if not cortesias_finales:
-        print("\n❌ No quedaron cortesías para registrar.")
-        return
-
-    # 3. Obtener autorización
-    autorizante = _obtener_autorizante()
-    if not autorizante:
-        return # Mensaje de cancelación ya mostrado en la función auxiliar
-
-    # 4. Guardar y registrar todo
-    _guardar_y_registrar_cortesias(cortesias_finales, autorizante)

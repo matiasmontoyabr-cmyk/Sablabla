@@ -154,43 +154,32 @@ def realizar_checkin():
     
     # Busca huéspedes con estado 'PROGRAMADO' para hoy o mañana
     programados = db.obtener_todos(
-        "SELECT NUMERO, APELLIDO, NOMBRE, HABITACION, CHECKIN FROM HUESPEDES WHERE ESTADO = 'PROGRAMADO' AND CHECKIN IN (?, ?) ORDER BY CHECKIN, APELLIDO", 
+        "SELECT NUMERO, APELLIDO, NOMBRE, HABITACION, CHECKIN FROM HUESPEDES WHERE ESTADO = 'PROGRAMADO' AND CHECKIN IN (?, ?) ORDER BY APELLIDO", 
         (hoy, manana)
     )
 
     if programados:
-        print("\n🗓️  Huéspedes programados para HOY y MAÑANA:")
-        print(f"{'CHECK-IN':<15} {'Nº HUESPED':<12} {'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5}")
-        print("-" * 80)
-        for huesped in programados:
-            cin = huesped["CHECKIN"]
-            nro = huesped["NUMERO"]
-            ape = huesped["APELLIDO"].title()
-            nom = huesped["NOMBRE"].title()
-            hab = huesped["HABITACION"]
-            print(f"{cin:<15} {nro:<12} {ape:<20} {nom:<20} {hab:<5}")
-        print("-" * 80)
+        print("\n🗓️  Huéspedes programados para HOY y MAÑANA (ordenados por apellido):")
+        print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN':<15}")
+        print("-" * 70)
+        for h in programados:
+            print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {h['CHECKIN']:<15}")
+        print("-" * 70)
     else:
-        print("\n⚠️  No hay huéspedes con checkin programado para hoy o mañana.")
+        print("\n⚠️  No hay huéspedes programados para hoy o mañana.")
+        return
 
-    # El nuevo menú ya no incluye la opción (*) de búsqueda, ya que mostramos los relevantes.
-    leyenda = "\nIngresá el número de huésped para hacer checkin ó (0) para cancelar: "
+    leyenda = "\nIngresá el número de habitación para hacer checkin ó (0) para cancelar: "
     while True:
-        numero = opcion_menu(leyenda, cero=True, minimo=1) 
-        
-        if numero == 0:
+        habitacion = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
+        if habitacion == 0:
             print("\n❌ Checkin cancelado.")
             return
 
-        # --- Proceso de Checkin ---
-        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-
+        # Buscar huésped PROGRAMADO en esa habitación
+        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO'", (habitacion,))
         if not huesped:
-            print(f"\n⚠️  No se encontró ningún huésped con el número {numero}.")
-            continue
-            
-        if huesped["ESTADO"] != "PROGRAMADO":
-            print(f"\n⚠️  El huésped {huesped['APELLIDO']} no está programado para checkin.")
+            print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
             continue
 
         imprimir_huesped(huesped)
@@ -225,7 +214,7 @@ def realizar_checkin():
             # Opcional: Log de auditoría
             log = (
                 f"[{marca_de_tiempo()}] CHECK-IN REALIZADO:\n"
-                f"Huésped: {huesped['NOMBRE']} {huesped['APELLIDO']} (Nro: {numero})\n"
+                f"Huésped: {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()} (Nro: {numero})\n"
                 f"Habitación: {huesped['HABITACION']}\n"
                 f"Acción realizada por: {usuarios.sesion.usuario}" 
             )
@@ -292,7 +281,7 @@ def realizar_checkout():
             # 5. LOG DE AUDITORÍA
             log = (
                 f"[{marca_de_tiempo()}] HUÉSPED CERRADO:\n"
-                f"Nombre: {huesped['NOMBRE']} {huesped['APELLIDO']} | Habitación: {habitacion}\n"
+                f"Nombre: {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()} | Habitación: {habitacion}\n"
                 f"Total de consumos no pagados al momento del cierre: R {total_pendiente:.2f}\n" 
                 f"Acción realizada por: {usuarios.sesion.usuario}"
             )
@@ -301,7 +290,7 @@ def realizar_checkout():
             
         except Exception as e:
             if str(e) != "Checkout cancelado por el usuario.":
-                 print(f"\n❌ Error al realizar el checkout. La operación fue revertida.")
+                 print(f"\n❌ Error al realizar el checkout. La operación fue revertida. {e}")
         return
 
 @usuarios.requiere_acceso(0)

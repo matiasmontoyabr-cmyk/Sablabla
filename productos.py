@@ -3,7 +3,7 @@ import sqlite3
 import usuarios
 from db import db
 from unidecode import unidecode
-from utiles import pedir_precio, pedir_entero, pedir_confirmacion, imprimir_productos, imprimir_producto, marca_de_tiempo, registrar_log, opcion_menu
+from utiles import pedir_precio, pedir_entero, pedir_confirmacion, imprimir_productos, imprimir_producto, marca_de_tiempo, registrar_log, opcion_menu, pedir_grupo
 
 LISTA_BLANCA_PRODUCTOS = [
     "CODIGO",
@@ -44,6 +44,7 @@ def nuevo_producto():
                 continue
         break # Exit the loop after finding a valid code
 
+    # Nombre del producto
     while True:
         respuesta_nombre = input("Escriba el nombre del producto ó (0) para cancelar: ").strip()
         if respuesta_nombre == "0":
@@ -62,22 +63,58 @@ def nuevo_producto():
     precio = pedir_precio("Ingresá el precio del producto: ")
     stock = pedir_entero("Ingresá el stock inicial: (-1 = infinito): ", minimo = -1)
     alerta = pedir_entero("Ingresá el nivel de alerta de stock ó deje vacío para usar el valor por defecto (5): ", minimo=1, defecto=5)
+    grupo = pedir_grupo()
+    if grupo is False:
+        # Si pedir_grupo() devolvió False, no intentamos la inserción
+        return
     respuesta_pago_inmediato = pedir_confirmacion("¿El producto se debe pagar en el momento? (si/no): ", defecto="no")
     pago_inmediato = 0 if respuesta_pago_inmediato != "si" else 1
     
+    _guardar_producto_y_notificar(db, codigo, nombre, precio, stock, alerta, grupo, pago_inmediato)     
+    
+    return
+
+def _guardar_producto_y_notificar(db, codigo, nombre, precio, stock, alerta, grupo, pago_inmediato):
+    #Intenta insertar el producto en la base de datos y notifica el resultado.
+
+    data = {
+        "codigo": codigo, 
+        "nombre": nombre, 
+        "precio": precio, 
+        "stock": stock, 
+        "pinmediato": pago_inmediato, 
+        "alerta": alerta, 
+        "grupo": grupo
+    }
+    
     try:
         with db.transaccion():
-            data = {"codigo": codigo, "nombre": nombre, "precio": precio, "stock": stock, "pinmediato": pago_inmediato, "alerta": alerta}
-            # We'll try to insert the product
-            # and let the database tell us if it already exists.
-            sql = "INSERT INTO PRODUCTOS (CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, PINMEDIATO) VALUES (?, ?, ?, ?, ?, ?)"
-            db.ejecutar(sql, (data["codigo"], data["nombre"], data["precio"], data["stock"], data["alerta"], data["pinmediato"]))
+            sql = """INSERT INTO PRODUCTOS (CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, PINMEDIATO, GRUPO)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)"""
+            db.ejecutar(sql, (data["codigo"], data["nombre"], data["precio"], data["stock"], data["alerta"], data["pinmediato"], data["grupo"]))
+            
         print(f'\n✔ Producto "{nombre.capitalize()}" registrado correctamente con codigo {codigo}.')
+
+        # Lógica de notificación de grupo (si la inserción fue exitosa)
+        if grupo is not None:
+            sql_productos_grupo = """
+                SELECT NOMBRE FROM PRODUCTOS 
+                WHERE GRUPO = ? AND CODIGO != ?
+            """
+            productos_registros = db.obtener_todos(sql_productos_grupo, (grupo, codigo))
+            productos_del_grupo = [registro['NOMBRE'] for registro in productos_registros]
+
+            if productos_del_grupo:
+                productos_str = ", ".join(productos_del_grupo)
+                print(f"\n🏷️ Grupo: {grupo.capitalize()}")
+                print(f"📦 Productos del Grupo: {productos_str}")
+            else:
+                print(f"🏷️ Este es el primer producto registrado en el grupo {grupo.capitalize()}.")
+                
     except sqlite3.IntegrityError:
         print(f"❌ Ya existe un producto con el código {codigo}.")
     except Exception as e:
-        print(f"❌ Error al registrar el producto: {e}")     
-    return
+        print(f"❌ Error al registrar el producto: {e}")
 
 @usuarios.requiere_acceso(0)
 def listado_productos():
@@ -190,28 +227,38 @@ def _ejecutar_busqueda(criterio, valor):
         else:
             return [] # Si el criterio no es reconocido, devuelve una lista vacía
 
-def actualizar_producto_db(database, codigo, campo, valor):
-    # 1. Validación de la Lista Blanca (El parche de seguridad)
-    if campo not in LISTA_BLANCA_PRODUCTOS:
-        print(f"\n❌ ERROR de seguridad: El campo '{campo}' no está permitido para ser actualizado.")
-        return False
-    # 2. Ejecución Segura
-    try:
-        # La consulta es segura porque:
-        # a) El nombre del campo ({campo}) ha sido validado contra la lista blanca.
-        # b) El valor (?) se pasa como parámetro, evitando inyección en el valor.
-        sql = f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?"
-        database.ejecutar(sql, (valor, codigo))
-        print(f"\n✔ Campo '{campo}' del producto {codigo} actualizado correctamente.")
-        return True
+@usuarios.requiere_acceso(2)
+def editar_producto():
+    # Coordina el proceso de edición de un producto.
+    producto = _seleccionar_producto_a_editar()
+    if not producto:
+        print("\n❌ Operación cancelada.")
+        return
+
+    # Diccionario de Despacho: mapea opciones a funciones
+    manejadores = {
+        1: _editar_codigo,
+        2: _editar_nombre,
+        3: _editar_precio,
+        4: _editar_stock,
+        5: _editar_alerta,
+        6: _editar_pinmediato,
+        7: _editar_grupo
+    }
+
+    leyenda = "\n¿Querés editar (1) el código, (2) nombre, (3) precio, (4) stock, (5) alerta de stock, (6) pago inmediato, (7) grupo ó cancelar (0)?: "
+
+    while True:
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
+        if opcion == 0:
+            print("\n❌ Edición cancelada.")
+            break
         
-    except sqlite3.IntegrityError:
-        # Captura errores si, por ejemplo, intentas usar un 'CODIGO' que ya existe.
-        print(f"\n❌ Error de integridad: El valor '{valor}' para el campo '{campo}' ya existe o es inválido.")
-        return False
-    except Exception as e:
-        print(f"\n❌ Error al actualizar el producto {codigo}: {e}")
-        return False
+        manejador = manejadores.get(opcion)
+        if manejador:
+            manejador(producto)
+            break # Termina después de una edición exitosa
+        # El else para opción inválida ya lo maneja 'opcion_menu' o el bucle.
 
 def _seleccionar_producto_a_editar():
     # Busca y selecciona un producto para editar.
@@ -232,30 +279,6 @@ def _seleccionar_producto_a_editar():
             return producto
         else:
             print("\n⚠️  Producto no encontrado.")
-
-def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
-    # Función centralizada que actualiza la BD y registra el cambio en el log.
-
-    codigo_original = producto_original["CODIGO"]
-    try:
-        with db.transaccion():
-            actualizar_producto_db(db, codigo_original, campo, nuevo_valor)
-
-            log = (
-                f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
-                f"Estado anterior -> Código: {producto_original['CODIGO']}, Nombre: {producto_original['NOMBRE']}, "
-                f"Precio: {producto_original['PRECIO']}, Stock: {producto_original['STOCK']}, "
-                f"Alerta: {producto_original['ALERTA']}\n, P.Inmediato: {producto_original['PINMEDIATO']}"
-                f"  Campo modificado -> \"{campo}\": {nuevo_valor}"
-            )
-            registrar_log("productos_editados.log", log)
-        print(f"\n✔ {campo.capitalize()} actualizado correctamente.")
-        return True
-    except sqlite3.IntegrityError:
-        print(f"\n❌ No se puede actualizar el {campo.lower()}: tiene consumos o cortesías asociadas.")
-    except Exception as e:
-        print(f"\n❌ Error al actualizar el {campo.lower()}: {e}")
-    return False
 
 def _editar_codigo(producto):
     # Manejador para la edición del código del producto."""
@@ -323,37 +346,65 @@ def _editar_pinmediato(producto):
     nuevo_pinmediato = pedir_confirmacion(f"¿Querés que el producto {producto["NOMBRE"]} tenga pago inmediato? : ", defecto = "no").upper
     _actualizar_y_registrar_log(producto, "PINMEDIATO", nuevo_pinmediato)
 
-@usuarios.requiere_acceso(2)
-def editar_producto():
-    # Coordina el proceso de edición de un producto.
-    producto = _seleccionar_producto_a_editar()
-    if not producto:
-        print("\n❌ Operación cancelada.")
-        return
+def _editar_grupo(producto):
+    # 1. Obtener la nueva información del grupo
+    nuevo_grupo = pedir_grupo()
+    
+    # 2. Verificar si la operación no fue cancelada
+    # Solo si el resultado NO es False (cancelación), procede a actualizar.
+    if nuevo_grupo is not False:
+        _actualizar_y_registrar_log(producto, "GRUPO", nuevo_grupo)
+        # Opcional: Podrías añadir un mensaje de éxito/fracaso aquí
+    else:
+        # El caso donde nuevo_grupo es False (cancelación)
+        print("Edición del grupo cancelada. No se realizaron cambios.")
 
-    # Diccionario de Despacho: mapea opciones a funciones
-    manejadores = {
-        1: _editar_codigo,
-        2: _editar_nombre,
-        3: _editar_precio,
-        4: _editar_stock,
-        5: _editar_alerta,
-        6: _editar_pinmediato
-    }
-    
-    leyenda = "\n¿Querés editar (1) el código, (2) nombre, (3) el precio, (4) stock, (5) alerta de stock, (6) pago inmediato ó cancelar (0)?: "
-    
-    while True:
-        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=6)
-        if opcion == 0:
-            print("\n❌ Edición cancelada.")
-            break
+def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
+    # Función centralizada que actualiza la BD y registra el cambio en el log.
+
+    codigo_original = producto_original["CODIGO"]
+    try:
+        with db.transaccion():
+            _actualizar_producto_db(db, codigo_original, campo, nuevo_valor)
+
+            log = (
+                f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
+                f"Estado anterior -> Código: {producto_original['CODIGO']}, Nombre: {producto_original['NOMBRE']}, "
+                f"Precio: {producto_original['PRECIO']}, Stock: {producto_original['STOCK']}, "
+                f"Alerta: {producto_original['ALERTA']}\n, P.Inmediato: {producto_original['PINMEDIATO']}"
+                f"  Campo modificado -> \"{campo}\": {nuevo_valor}"
+            )
+            registrar_log("productos_editados.log", log)
+        print(f"\n✔ {campo.capitalize()} actualizado correctamente.")
+        return True
+    except sqlite3.IntegrityError:
+        print(f"\n❌ No se puede actualizar el {campo.lower()}: tiene consumos o cortesías asociadas.")
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el {campo.lower()}: {e}")
+    return False
+
+def _actualizar_producto_db(database, codigo, campo, valor):
+    # 1. Validación de la Lista Blanca (El parche de seguridad)
+    if campo not in LISTA_BLANCA_PRODUCTOS:
+        print(f"\n❌ ERROR de seguridad: El campo '{campo}' no está permitido para ser actualizado.")
+        return False
+    # 2. Ejecución Segura
+    try:
+        # La consulta es segura porque:
+        # a) El nombre del campo ({campo}) ha sido validado contra la lista blanca.
+        # b) El valor (?) se pasa como parámetro, evitando inyección en el valor.
+        sql = f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?"
+        database.ejecutar(sql, (valor, codigo))
+        print(f"\n✔ Campo '{campo}' del producto {codigo} actualizado correctamente.")
+        return True
         
-        manejador = manejadores.get(opcion)
-        if manejador:
-            manejador(producto)
-            break # Termina después de una edición exitosa
-        # El else para opción inválida ya lo maneja 'opcion_menu' o el bucle.
+    except sqlite3.IntegrityError:
+        # Captura errores si, por ejemplo, intentas usar un 'CODIGO' que ya existe.
+        print(f"\n❌ Error de integridad: El valor '{valor}' para el campo '{campo}' ya existe o es inválido.")
+        return False
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el producto {codigo}: {e}")
+        return False
 
 @usuarios.requiere_acceso(2)
 def eliminar_producto():

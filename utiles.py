@@ -318,6 +318,27 @@ def pedir_habitación(checkin, checkout, contingente, excluir_numero=None):
                 continue
             return habitacion
 
+def pedir_grupo():
+    grupo = input("Ingresá el nombre del grupo, dejalo vacío ó (0) para cancelar): ").strip()
+    # Verifica si se ingresó "0" para cancelar
+    if grupo == '0':
+        print("❌ Operación cancelada.")
+        return False
+
+    # Verifica si la entrada está vacía
+    elif grupo == "":
+        print("➡️ Se devolverá None (entrada vacía).")
+        return None
+
+    # Si hay texto, lo devuelve
+    else:
+        # 3. Limpieza de caracteres (Lógica actual)
+        # Quitar acentos, reemplazar guiones por espacios y quitar caracteres especiales
+        grupo_unidecode = unidecode(grupo)
+        grupo_limpio = grupo_unidecode.replace('-', ' ').replace('_', ' ')
+        grupo_final = re.sub(r"[^a-zA-Z0-9\s]", "", grupo_limpio).lower()
+        return grupo_final
+
 def habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=None):
     """
     Verifica si una habitación está ocupada (ABIERTO o PROGRAMADO)
