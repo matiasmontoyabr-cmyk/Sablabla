@@ -4,7 +4,7 @@ import usuarios
 from datetime import datetime, date, timedelta
 from db import db
 from unidecode import unidecode
-from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación, opcion_menu, pedir_nombre
+from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación, opcion_menu, pedir_nombre, formatear_fecha
 
 LISTA_BLANCA_HUESPED = [
     "APELLIDO",
@@ -163,7 +163,7 @@ def realizar_checkin():
         print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN':<15}")
         print("-" * 70)
         for h in programados:
-            print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {h['CHECKIN']:<15}")
+            print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
         print("-" * 70)
     else:
         print("\n⚠️  No hay huéspedes programados para hoy o mañana.")
@@ -181,7 +181,7 @@ def realizar_checkin():
         if not huesped:
             print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
             continue
-
+        numero = huesped["NUMERO"]
         imprimir_huesped(huesped)
 
         # Luego de previsualizar el huesped pide confirmación

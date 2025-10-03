@@ -269,15 +269,12 @@ def eliminar_consumos():
         print(f"{'#':<3} {'FECHA':<12} {'PRODUCTO':<30} {'CANTIDAD':<10}")
         print("-" * 60)
         for idx, consumo in enumerate(consumos, start=1):
-            consumo_id = consumo["ID"]
             fecha = consumo["FECHA"]
-            producto_id = consumo["PRODUCTO"]
             producto_nombre = consumo["NOMBRE"]
             cantidad = consumo["CANTIDAD"]
             print(f"{idx:<3} {formatear_fecha(fecha):<12} {producto_nombre:<30} {cantidad:<10}")
 
-        seleccion = input("\nIngresá el/los número(s) de consumo a eliminar separados por coma (ej: 1,3): ").strip()
-        seleccion = seleccion.split(",")
+        seleccion = input("\nIngresá el/los número(s) de consumo a eliminar separados por coma (ej: 1,3): ").strip().split(",")
         a_eliminar = []
         for item in seleccion:
             item = item.strip()
@@ -293,52 +290,59 @@ def eliminar_consumos():
         if not a_eliminar:
                 print("❌ No se seleccionaron consumos válidos.")
                 return
-        
+        # Ejecutar eliminación en DB
         try:
-            # Inicia la transacción
-            with db.transaccion():
-                for i in a_eliminar:
-                    consumo_data = consumos[i]
-                    consumo_id = consumo_data["ID"]
-                    producto_id = consumo_data["PRODUCTO"]
-                    producto_nombre = consumo_data["NOMBRE"]
-                    cantidad = consumo_data["CANTIDAD"]
-
-                    # Restaurar stock si aplica
-                    producto = db.obtener_uno("SELECT STOCK FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
-                    # Restaurar stock (producto y equivalentes de su grupo)
-                    grupo_info = db.obtener_uno("SELECT GRUPO FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
-                    grupo = grupo_info["GRUPO"] if grupo_info else None
-
-                    if grupo:
-                        # Restaurar stock a todos los productos del grupo
-                        equivalentes = db.obtener_todos("SELECT CODIGO, STOCK FROM PRODUCTOS WHERE GRUPO = ?", (grupo,))
-                        for eq in equivalentes:
-                            if eq["STOCK"] != -1:  # no tocar stock infinito
-                                nuevo_stock = eq["STOCK"] + cantidad
-                                db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, eq["CODIGO"]))
-                    else:
-                        # Producto sin grupo → solo él
-                        if producto and producto["STOCK"] != -1:
-                            nuevo_stock = producto["STOCK"] + cantidad
-                            db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, producto_id))
-                    
-                    # Eliminar consumo
-                    db.ejecutar("DELETE FROM CONSUMOS WHERE ID = ?", (consumo_id,))
-
-                    # Log
-                    marca_tiempo = marca_de_tiempo()
-                    log = (
-                        f"[{marca_tiempo}] CONSUMO ELIMINADO:\n"
-                        f"Huésped: {huesped['NOMBRE']} {huesped['APELLIDO']} | Habitación: {huesped['HABITACION']} | Huesped_ID: {huesped['NUMERO']}\n"
-                        f"Producto: {producto_nombre} (ID: {producto_id}) | Cantidad: {cantidad} | Consumo_ID: {consumo_id}"
-                        f"Acción realizada por: {usuarios.sesion.usuario}"
-                    )
-                    registrar_log("consumos_eliminados.log", log)
-            print(f"✔ Se eliminaron {len(a_eliminar)} consumos.")
+            eliminados = _eliminar_consumos_db(huesped, consumos, a_eliminar)
+            print(f"✔ Se eliminaron {eliminados} consumos.")
         except Exception as e:
-            print(f"\n❌ La operación de eliminación falló y fue revertida: {e}")
+            print(f"\n❌ {e}")
         return
+
+def _eliminar_consumos_db(huesped, consumos, a_eliminar):
+    """
+    Elimina consumos seleccionados y restaura stock en la DB.
+    Devuelve la cantidad de consumos eliminados.
+    """
+    try:
+        with db.transaccion():
+            for i in a_eliminar:
+                consumo_data = consumos[i]
+                consumo_id = consumo_data["ID"]
+                producto_id = consumo_data["PRODUCTO"]
+                producto_nombre = consumo_data["NOMBRE"]
+                cantidad = consumo_data["CANTIDAD"]
+
+                # Restaurar stock (producto y equivalentes de su grupo)
+                grupo_info = db.obtener_uno("SELECT GRUPO FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
+                grupo = grupo_info["GRUPO"] if grupo_info else None
+
+                if grupo:
+                    equivalentes = db.obtener_todos("SELECT CODIGO, STOCK FROM PRODUCTOS WHERE GRUPO = ?", (grupo,))
+                    for eq in equivalentes:
+                        if eq["STOCK"] != -1:
+                            nuevo_stock = eq["STOCK"] + cantidad
+                            db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, eq["CODIGO"]))
+                else:
+                    producto = db.obtener_uno("SELECT STOCK FROM PRODUCTOS WHERE CODIGO = ?", (producto_id,))
+                    if producto and producto["STOCK"] != -1:
+                        nuevo_stock = producto["STOCK"] + cantidad
+                        db.ejecutar("UPDATE PRODUCTOS SET STOCK = ? WHERE CODIGO = ?", (nuevo_stock, producto_id))
+
+                # Eliminar consumo
+                db.ejecutar("DELETE FROM CONSUMOS WHERE ID = ?", (consumo_id,))
+
+                # Log
+                marca_tiempo = marca_de_tiempo()
+                log = (
+                    f"[{marca_tiempo}] CONSUMO ELIMINADO:\n"
+                    f"Huésped: {huesped['NOMBRE']} {huesped['APELLIDO']} | Habitación: {huesped['HABITACION']} | Huesped_ID: {huesped['NUMERO']}\n"
+                    f"Producto: {producto_nombre} (ID: {producto_id}) | Cantidad: {cantidad} | Consumo_ID: {consumo_id}\n"
+                    f"Acción realizada por: {usuarios.sesion.usuario}"
+                )
+                registrar_log("consumos_eliminados.log", log)
+        return len(a_eliminar)
+    except Exception as e:
+        raise RuntimeError(f"La operación de eliminación falló y fue revertida: {e}")
 
 @usuarios.requiere_acceso(1)
 def registrar_pago():
@@ -471,7 +475,7 @@ def consumo_cortesia():
     # 4. Guardar y registrar todo
     _guardar_y_registrar_cortesias(cortesias_finales, autorizante)
 
-    def _recolectar_cortesias():
+def _recolectar_cortesias():
     # Recolecta productos para cortesía en un bucle interactivo.
     # Devuelve una lista de diccionarios de cortesías.
 
