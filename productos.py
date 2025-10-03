@@ -70,11 +70,11 @@ def nuevo_producto():
     respuesta_pago_inmediato = pedir_confirmacion("¿El producto se debe pagar en el momento? (si/no): ", defecto="no")
     pago_inmediato = 0 if respuesta_pago_inmediato != "si" else 1
     
-    _guardar_producto_y_notificar(db, codigo, nombre, precio, stock, alerta, grupo, pago_inmediato)     
+    _guardar_producto_y_notificar(codigo, nombre, precio, stock, alerta, grupo, pago_inmediato)     
     
     return
 
-def _guardar_producto_y_notificar(db, codigo, nombre, precio, stock, alerta, grupo, pago_inmediato):
+def _guardar_producto_y_notificar(codigo, nombre, precio, stock, alerta, grupo, pago_inmediato):
     #Intenta insertar el producto en la base de datos y notifica el resultado.
 
     data = {

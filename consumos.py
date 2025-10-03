@@ -475,46 +475,46 @@ def consumo_cortesia():
     # Recolecta productos para cortesía en un bucle interactivo.
     # Devuelve una lista de diccionarios de cortesías.
 
-    cortesias = []
-    leyenda = "\nIngresá el código del producto, (*) para buscar ó (0) para finalizar: "
-    while True:
-        codigo = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
-        if codigo == 0:
-            break
-        if codigo == "*":
-            productos = db.obtener_todos("SELECT * FROM PRODUCTOS WHERE STOCK > 0 OR STOCK = -1")
-            if productos:
-                imprimir_productos(productos)
-            else:
-                print("\n❌ No hay productos en stock.")
-            continue
-
-        producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
-        if not producto:
-            print("\n⚠️  Producto no encontrado.")
-            continue
-        
-        # Procesa la cantidad para el producto seleccionado
-        nombre = producto["NOMBRE"]
-        stock = producto["STOCK"]
-        print(f"\nProducto seleccionado: {nombre} (Stock: {'Infinito' if stock == -1 else stock})")
-        
+        cortesias = []
+        leyenda = "\nIngresá el código del producto, (*) para buscar ó (0) para finalizar: "
         while True:
-            cantidad = pedir_entero("Ingresá la cantidad ó (0) para cancelar: ", minimo=0)
-            if cantidad == 0:
-                print("\n❌ Producto cancelado.")
+            codigo = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
+            if codigo == 0:
                 break
-            if stock != -1 and cantidad > stock:
-                print(f"\n❌ No hay suficiente stock. Disponibles: {stock}")
+            if codigo == "*":
+                productos = db.obtener_todos("SELECT * FROM PRODUCTOS WHERE STOCK > 0 OR STOCK = -1")
+                if productos:
+                    imprimir_productos(productos)
+                else:
+                    print("\n❌ No hay productos en stock.")
+                continue
+
+            producto = db.obtener_uno("SELECT * FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
+            if not producto:
+                print("\n⚠️  Producto no encontrado.")
                 continue
             
-            cortesias.append({
-                "codigo": codigo, "nombre": nombre, "cantidad": cantidad, "stock_anterior": stock
-            })
-            print(f"✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
-            break # Sale del bucle de cantidad
+            # Procesa la cantidad para el producto seleccionado
+            nombre = producto["NOMBRE"]
+            stock = producto["STOCK"]
+            print(f"\nProducto seleccionado: {nombre} (Stock: {'Infinito' if stock == -1 else stock})")
             
-    return cortesias
+            while True:
+                cantidad = pedir_entero("Ingresá la cantidad ó (0) para cancelar: ", minimo=0)
+                if cantidad == 0:
+                    print("\n❌ Producto cancelado.")
+                    break
+                if stock != -1 and cantidad > stock:
+                    print(f"\n❌ No hay suficiente stock. Disponibles: {stock}")
+                    continue
+                
+                cortesias.append({
+                    "codigo": codigo, "nombre": nombre, "cantidad": cantidad, "stock_anterior": stock
+                })
+                print(f"✔ Se agregó a la lista: {cantidad} unidad(es) de '{nombre}'.")
+                break # Sale del bucle de cantidad
+                
+        return cortesias
 
 def _editar_lista_cortesias(cortesias):
     # Permite al usuario eliminar elementos de la lista de cortesías.
