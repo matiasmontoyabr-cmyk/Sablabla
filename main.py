@@ -61,7 +61,7 @@ def productos_existe():
                     PRECIO REAL NOT NULL CHECK (PRECIO >= 0),
                     STOCK INTEGER NOT NULL CHECK (STOCK >= 0 OR STOCK = -1),
                     ALERTA INTEGER NOT NULL DEFAULT 5,
-                    PINMEDIATO INTEGER NOT NULL DEFAULT 0 CHECK (PINMEDIATO IN (0,1))),
+                    PINMEDIATO INTEGER NOT NULL CHECK (PINMEDIATO IN (0,1)) DEFAULT 0,
                     GRUPO TEXT DEFAULT NULL)''')
     except Exception as e:
         print(f"❌ Error al crear la tabla PRODUCTOS: {e}")
