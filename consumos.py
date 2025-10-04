@@ -4,7 +4,7 @@ from datetime import datetime
 from db import db
 from huespedes import buscar_huesped, _editar_huesped_db
 from unidecode import unidecode
-from utiles import registrar_log, imprimir_huesped, pedir_entero, pedir_confirmacion, imprimir_productos, formatear_fecha, marca_de_tiempo, opcion_menu
+from utiles import registrar_log, imprimir_huesped, pedir_entero, pedir_confirmacion, imprimir_productos, formatear_fecha, marca_de_tiempo, opcion_menu, parse_fecha_a_datetime
 
 
 @usuarios.requiere_acceso(1)
@@ -119,13 +119,13 @@ def _editar_consumos_agregados(consumos):
     if not consumos:
         return consumos
 
-    if pedir_confirmacion("\n¿Querés eliminar alguno de los consumos recién agregados? (si/no): ", defecto="no") != "si":
-        return consumos
-
     print("\nConsumos recién agregados:")
     for i, consumo in enumerate(consumos):
         print(f"  {i + 1}. Producto: {consumo['nombre']} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
 
+    if pedir_confirmacion("\n¿Querés eliminar alguno de los consumos recién agregados? (si/no): ", defecto="no") != "si":
+        return consumos
+    
     a_eliminar_str = input("\nIngresá los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
     if a_eliminar_str == '0':
         return consumos
@@ -211,33 +211,81 @@ def ver_consumos():
             print("❌ Habitación no encontrada.")
             continue
 
-        query = """SELECT C.ID, C.FECHA, C.PRODUCTO, P.NOMBRE, C.CANTIDAD, P.PRECIO FROM CONSUMOS C JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO WHERE C.HUESPED = ? ORDER BY C.FECHA DESC"""
+        query = """SELECT C.ID, C.FECHA, C.PRODUCTO, P.NOMBRE, C.CANTIDAD, P.PRECIO 
+                   FROM CONSUMOS C 
+                   JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO 
+                   WHERE C.HUESPED = ? 
+                   ORDER BY C.FECHA ASC"""
         consumos = db.obtener_todos(query, (huesped["NUMERO"],))
 
-        if consumos:
-            print(f"\nHistorial de consumos de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
-            # Modificación: Agregar "PRECIO TOTAL" al encabezado
-            print(f"{'#':<3} {'FECHA Y HORA':<20} {'PRODUCTO':<30} {'CANTIDAD':<6} {'P. UNIT':>10} {'PRECIO_TOTAL':>12}")
-            print("-" * 90) # Ajustar la longitud de la línea separadora
+        if not consumos:
+            print("\nEsta habitación no tiene consumos registrados.")
+            return
 
-            grand_total = 0.0 # Inicializar el total general
+        print(f"\nHistorial de consumos de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
+        # Diccionario para agrupar consumos por fecha (YYYY-MM-DD)
+        consumos_por_dia = {}
+        
+        # 1. Agrupar los consumos
+        for consumo in consumos:
+            dt = parse_fecha_a_datetime(consumo["FECHA"])
+            if not dt:
+                continue
+        
+            # Extraer solo la parte de la fecha (YYYY-MM-DD)
+            fecha_solo_dia = dt.date().isoformat()
+            hora_solo = dt.strftime("%H:%M") if dt.time() != datetime.min.time() else ""
+            
+            # Calcular el total por ítem y agregarlo al diccionario de consumo
+            consumo["ITEM_TOTAL"] = consumo["CANTIDAD"] * consumo["PRECIO"]
+            consumo["FECHA_SOLO"] = fecha_solo_dia
+            consumo["HORA_SOLO"] = hora_solo
 
-            for idx, consumo in enumerate(consumos, start=1):
-                fecha = consumo["FECHA"]
-                producto_nombre = consumo["NOMBRE"].capitalize()
+            if fecha_solo_dia not in consumos_por_dia:
+                consumos_por_dia[fecha_solo_dia] = []
+            consumos_por_dia[fecha_solo_dia].append(consumo)
+
+        # 2. Imprimir los consumos agrupados
+        grand_total = 0.0 # Inicializar el total general
+        
+        # Encabezado de la tabla
+        print(f"{'#':<3} {'HORA':<15} {'PRODUCTO':<30} {'CANTIDAD':<6} {'P.UNIT':>10} {'P.TOTAL':>12}")
+        print("-" * 80) # Ajustar la longitud de la línea separadora
+        
+        indice_general = 1 # Índice para mantener la numeración de todos los consumos
+
+        # Iterar sobre las fechas ordenadas (Python 3.7+ mantiene el orden de inserción, 
+        # pero como el query fue ASC, esto debería ser cronológico)
+        for fecha_dia in sorted(consumos_por_dia.keys()):
+            consumos_del_dia = consumos_por_dia[fecha_dia]
+            subtotal_diario = 0.0
+            
+            # Imprimir el separador de día (sólo la fecha)
+            fecha_formateada = formatear_fecha(fecha_dia)
+            print(f"\n--- FECHA: {fecha_formateada} " + "-" * (79 - len(fecha_formateada) - 13))
+
+            for consumo in consumos_del_dia:
+                hora_solo = consumo["HORA_SOLO"]
+                producto_nombre = consumo["NOMBRE"].title()
                 cantidad = consumo["CANTIDAD"]
                 precio = consumo["PRECIO"]
-                fecha_display = formatear_fecha(fecha)
-                item_total = cantidad * precio # Calcular el total por item
-                grand_total += item_total # Acumular al total general
+                item_total = consumo["ITEM_TOTAL"]
+
+                subtotal_diario += item_total
                 if len(producto_nombre) > 30:
                     producto_nombre = producto_nombre[:27] + '...'
-                # Modificación: Imprimir el precio total por item
-                print(f"{idx:<3} {fecha_display:<20} {producto_nombre:<30} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f}")
-            print("-" * 90) # Línea separadora antes del total
-            print(f"{'TOTAL:':<70} {grand_total:>15.2f}") # Imprimir el total general
-        else:
-            print("\nEsta habitación no tiene consumos registrados.")
+                print(f"{indice_general:<3} {hora_solo:<15} {producto_nombre:<30} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f}")
+                indice_general += 1
+                
+            # Imprimir el subtotal diario
+            print("-" * 80)
+            print(f"{'SUBTOTAL DIARIO:':<67} {subtotal_diario:>12.2f}")
+            print("=" * 80)
+
+            grand_total += subtotal_diario
+
+        # 3. Imprimir el Total General
+        print(f"\n{'TOTAL DE CONSUMOS:':<67} {grand_total:>12.2f}")
         return
 
 @usuarios.requiere_acceso(2)
@@ -290,6 +338,27 @@ def eliminar_consumos():
         if not a_eliminar:
                 print("❌ No se seleccionaron consumos válidos.")
                 return
+        
+        consumos_a_mostrar = [consumos[i] for i in a_eliminar]
+        
+        print("\n📋 Consumo(s) seleccionado(s) para eliminar:")
+        print(f"{'#':<3} {'PRODUCTO':<30} {'CANTIDAD':<10} {'FECHA':<12}")
+        print("-" * 60)
+        
+        # Obtenemos los números originales (1-based) para mostrar:
+        numeros_seleccionados = [i + 1 for i in a_eliminar] 
+        
+        for i, consumo in enumerate(consumos_a_mostrar):
+            fecha = consumo["FECHA"]
+            producto_nombre = consumo["NOMBRE"]
+            cantidad = consumo["CANTIDAD"]
+            # Usamos el número original de la lista para mostrar la referencia
+            print(f"{numeros_seleccionados[i]:<3} {producto_nombre:<30} {cantidad:<10} {formatear_fecha(fecha):<12}")
+
+        if pedir_confirmacion(f"\n¿Estás seguro que querés eliminar los siguientes consumo(s)? (si/no): ") != "si":
+            print("❌ Operación cancelada.")
+            return
+
         # Ejecutar eliminación en DB
         try:
             eliminados = _eliminar_consumos_db(huesped, consumos, a_eliminar)

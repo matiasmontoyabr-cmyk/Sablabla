@@ -2,11 +2,11 @@
 
 #Que permita cancelar al pedir la fecha y demás.
 
-#Aumentar el tamaño de la fuente desde propiedades de la consola
+#Muestreo de cortesías en generar_reportes, con opción diario, semanal, mensual, histórico. Requiere mínimo lvl 2.
 
-#Por qué algunos iconos necesitan doble espacio, porque sino se pegan demaciado al texto y cómo solucionarlo?
+# Ojo que en los logs (consumos_eliminados.log, checkins.log, etc.) concatenás strings largos sin salto de línea antes de "Acción realizada por..."
 
-#Muestreo de coretsías en generar_reportes, con opción diario, semanal, mensual, histórico. Requiere mínimo lvl 2.
+#Los logs deben guardar los nombres con Title Case.
 
 #Estructurar Logs en JSON para facilitar su lectura y análisis
 #Verificar el muestreo de registros para que no se muestren todos los registros de una vez
@@ -61,7 +61,7 @@ def productos_existe():
                     PRECIO REAL NOT NULL CHECK (PRECIO >= 0),
                     STOCK INTEGER NOT NULL CHECK (STOCK >= 0 OR STOCK = -1),
                     ALERTA INTEGER NOT NULL DEFAULT 5,
-                    PINMEDIATO INTEGER NOT NULL CHECK (PINMEDIATO IN (0,1)) DEFAULT 0,
+                    PINMEDIATO INTEGER NOT NULL DEFAULT 0 CHECK (PINMEDIATO IN (0,1)),
                     GRUPO TEXT DEFAULT NULL)''')
     except Exception as e:
         print(f"❌ Error al crear la tabla PRODUCTOS: {e}")
@@ -196,7 +196,7 @@ def gestionar_inventario():
             return
 
 def gestionar_reportes():
-    leyenda = "\nGestión de reportes\n1.📋 Generar reporte de consumos diarios\n2.🧘 Generar reporte de pasajeros abiertos\n3.👋 Generar reporte de pasajeros cerrados\n4.📆 Generar reporte de pronto checkin\n5.📦 Generar reporte de inventario\n6.📅 Generar reporte de ocupación\n7.㏒ Ver logs\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de reportes\n1.📋 Generar reporte de consumos diarios\n2.🧘 Generar reporte de habitaciones abiertas\n3.👋 Generar reporte de habitaciones cerradas\n4.📆 Generar reporte de pronto checkin\n5.📦 Generar reporte de inventario\n6.📅 Generar reporte de ocupación\n7.㏒ Ver logs\n0. ⮐ Volver al inicio\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=7)
         if respuesta == 1:
@@ -238,7 +238,7 @@ def gestionar_usuarios():
 ### PROGRAMA ###
 
 try:
-    print("Bienvenido al sistema de gestión de la posada Onda de mar 2.1 (Beta)")
+    print("Bienvenido al sistema de gestión de la posada Onda de mar 2.2 by MatCodePro")
     usuarios_existe()
     productos_existe()
     huespedes_existe()

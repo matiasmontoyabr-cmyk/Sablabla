@@ -139,6 +139,23 @@ def formatear_fecha(fecha_iso):
     # Si no se puede parsear, devolver tal cual
     return fecha_iso
 
+def parse_fecha_a_datetime(fecha_str):
+    """
+    Intenta parsear una fecha en string a datetime.
+    Soporta 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM:SS', y variantes.
+    Devuelve datetime si puede, o None si no.
+    """
+    if not fecha_str:
+        return None
+
+    formatos = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]
+    for fmt in formatos:
+        try:
+            return datetime.strptime(fecha_str, fmt)
+        except Exception:
+            continue
+    return None
+
 def marca_de_tiempo():
     return datetime.now().strftime("%d-%m-%Y %H:%M")
 
