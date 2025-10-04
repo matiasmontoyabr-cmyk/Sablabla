@@ -246,7 +246,7 @@ def ver_consumos():
             consumos_por_dia[fecha_solo_dia].append(consumo)
 
         # 2. Imprimir los consumos agrupados
-        grand_total = 0.0 # Inicializar el total general
+        grand_subtotal = 0.0 # Inicializar el total general
         
         # Encabezado de la tabla
         print(f"{'#':<3} {'HORA':<15} {'PRODUCTO':<30} {'CANTIDAD':<6} {'P.UNIT':>10} {'P.TOTAL':>12}")
@@ -282,10 +282,20 @@ def ver_consumos():
             print(f"{'SUBTOTAL DIARIO:':<67} {subtotal_diario:>12.2f}")
             print("=" * 80)
 
-            grand_total += subtotal_diario
+            grand_subtotal += subtotal_diario
 
-        # 3. Imprimir el Total General
-        print(f"\n{'TOTAL DE CONSUMOS:':<67} {grand_total:>12.2f}")
+        # 3. Impresión del Total de Consumos, Propina y Total Final (NUEVA LÓGICA)
+        # Total de Consumos (sin propina)
+        print(f"\n{'TOTAL DE CONSUMOS:':<67} {grand_subtotal:>12.2f}")
+        
+        # Cálculo de la Propina (10%)
+        propina = grand_subtotal * 0.10
+        print(f"{'PROPINA (10%) =':<67} {propina:>12.2f}")
+
+        # Total Final (Consumos + Propina)
+        total_final = grand_subtotal + propina
+        print(f"\n{'TOTAL FINAL:':<67} {total_final:>12.2f}")
+        
         return
 
 @usuarios.requiere_acceso(2)

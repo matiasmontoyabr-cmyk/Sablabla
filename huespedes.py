@@ -710,15 +710,24 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
         WHERE C.HUESPED = ? AND C.PAGADO = 0
     """
     consumos_no_pagados = db.obtener_todos(query, (numero_huesped,))
-    total_pendiente = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados)
+    # Calcular el total de consumos brutos (sin propina)
+    total_consumos_bruto = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados)
+    
+    # LÓGICA DE PROPINAS APLICADA AQUÍ
+    propina = total_consumos_bruto * 0.10
+    total_pendiente = total_consumos_bruto + propina # Este es el monto final a pagar
 
     if not consumos_no_pagados:
         print("\n✔ No hay consumos pendientes de pago para esta habitación.")
         return True, registro_actual, total_pendiente # Se devuelve el total para el log
     
     # 2. Consumos pendientes
-    print(f"\n💰 Total pendiente por consumos NO pagados: R {total_pendiente:.2f}")
-    
+    print("\n=========================================")
+    print(f"💰 Detalle de la cuenta pendiente:")
+    print(f"   Consumos:          R {total_consumos_bruto:.2f}")
+    print(f"   Propina (10%):     R {propina:.2f}")
+    print(f"   TOTAL PENDIENTE:   R {total_pendiente:.2f}")
+    print("=========================================")
     respuesta_pago = pedir_confirmacion("\n⚠️ ¿Querés marcar estos consumos como pagados? (si/no): ")
     
     if respuesta_pago == "si":
@@ -729,7 +738,7 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
                 
                 # Actualizar registro del huésped
                 marca_tiempo = marca_de_tiempo()
-                registro_pago = f"Se marcaron como pagados consumos por R {total_pendiente:.2f} - {marca_tiempo}"
+                registro_pago = f"Se marcaron como pagados consumos e incluyó propina. Total cobrado: R {total_pendiente:.2f} (Consumos: R{total_consumos_bruto:.2f} + Propina: R{propina:.2f}) - {marca_tiempo}"
                 nuevo_registro = registro_actual + separador + registro_pago
                 _editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
             
@@ -754,7 +763,7 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
             
         # Registra la acción de cierre con deuda
         marca_tiempo = marca_de_tiempo()
-        registro_impago = f"ADVERTENCIA: Habitación cerrada con consumos pendientes por un total de R{total_pendiente:.2f} - {marca_tiempo}"
+        registro_impago = f"ADVERTENCIA: Habitación cerrada con deuda pendiente (Consumos + Propina) por un total de R{total_pendiente:.2f} - {marca_tiempo}"
         nuevo_registro_con_adv = registro_actual + separador + registro_impago
         
         print(f"\n✅ Habitación marcada para cierre. Se ha registrado la deuda pendiente (R {total_pendiente:.2f}).")
