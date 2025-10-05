@@ -4,7 +4,7 @@ import usuarios
 from datetime import datetime, date, timedelta
 from db import db
 from unidecode import unidecode
-from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación, opcion_menu, pedir_nombre, formatear_fecha
+from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación, opcion_menu, pedir_nombre, formatear_fecha, parse_fecha_a_datetime
 
 LISTA_BLANCA_HUESPED = [
     "APELLIDO",
@@ -152,21 +152,31 @@ def realizar_checkin():
     hoy = date.today().isoformat()
     manana = (date.today() + timedelta(days=1)).isoformat()
     
-    # Busca huéspedes con estado 'PROGRAMADO' para hoy o mañana
+    # Busca huéspedes con estado 'PROGRAMADO' hasta mañana
     programados = db.obtener_todos(
-        "SELECT NUMERO, APELLIDO, NOMBRE, HABITACION, CHECKIN FROM HUESPEDES WHERE ESTADO = 'PROGRAMADO' AND CHECKIN IN (?, ?) ORDER BY APELLIDO", 
-        (hoy, manana)
+        "SELECT NUMERO, APELLIDO, NOMBRE, HABITACION, CHECKIN FROM HUESPEDES WHERE ESTADO = 'PROGRAMADO' AND CHECKIN <= ? ORDER BY APELLIDO", 
+        (manana,)
     )
 
     if programados:
-        print("\n🗓️  Huéspedes programados para HOY y MAÑANA (ordenados por apellido):")
-        print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN':<15}")
-        print("-" * 70)
-        for h in programados:
-            print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
-        print("-" * 70)
+        programados_atrasados = [h for h in programados if h['CHECKIN'] < hoy]
+        programados_ok = [h for h in programados if h['CHECKIN'] >= hoy]
+        if programados_atrasados:
+                print("\n🕰️  Huéspedes programados con CHECK-IN ATRASADO:")
+                print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN PROG':<15}")
+                print("-" * 70)
+                for h in programados_atrasados:
+                    print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
+                print("-" * 70)
+        if programados_ok:
+            print("\n🗓️  Huéspedes programados (ordenados por apellido):")
+            print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN':<15}")
+            print("-" * 70)
+            for h in programados_ok:
+                print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
+            print("-" * 70)
     else:
-        print("\n⚠️  No hay huéspedes programados para hoy o mañana.")
+        print("\n⚠️  No hay huéspedes programados para el checkin.")
         return
 
     leyenda = "\nIngresá el número de habitación para hacer checkin ó (0) para cancelar: "
@@ -181,6 +191,24 @@ def realizar_checkin():
         if not huesped:
             print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
             continue
+
+        # Manejar la fecha real del Check-in (Integración de la nueva lógica)
+        checkin_programado = huesped["CHECKIN"]
+        checkin_definitivo = date.today().isoformat() # Por defecto, la fecha de hoy
+
+        # Si la fecha programada es anterior a hoy, pedimos la fecha real de check-in
+        if checkin_programado < checkin_definitivo:
+            imprimir_huesped(huesped)
+            
+            # Llama a la función que maneja la interacción y la validación del rango de fechas
+            fecha_auxiliar = _pedir_fecha_checkin_real(checkin_programado)
+            
+            if fecha_auxiliar:
+                checkin_definitivo = fecha_auxiliar
+            else:
+                # Si se cancela la selección de fecha, se vuelve a preguntar por habitación.
+                continue 
+
         numero = huesped["NUMERO"]
         imprimir_huesped(huesped)
 
@@ -189,19 +217,26 @@ def realizar_checkin():
             print("\n❌ Checkin cancelado por el usuario.")
             return
         
-        # --- Recolección de datos y actualización ---
+        # --- Recolección de datos y actualización (Lógica correcta) ---
         datos_recopilados = _pedir_datos(huesped)
         
-        # Preparar la actualización
         registro_anterior = str(huesped["REGISTRO"] or "")
         separador = "\n---\n"
-        registro_checkin = f"CHECK-IN REALIZADO - Estado cambiado a ABIERTO - {marca_de_tiempo()}" 
+        
+        # Creación del registro
+        if checkin_definitivo != checkin_programado:
+            registro_checkin = (
+                f"CHECK-IN REALIZADO (Fecha programada: {formatear_fecha(checkin_programado)} - Fecha definitiva: {formatear_fecha(checkin_definitivo)}) "
+                f"- Estado cambiado a ABIERTO - {marca_de_tiempo()}"
+            )
+        else:
+            registro_checkin = f"CHECK-IN REALIZADO - Estado cambiado a ABIERTO - {marca_de_tiempo()}" 
         
         nuevo_registro = registro_anterior + separador + registro_checkin if registro_anterior.strip() else registro_checkin
 
         updates = {
             "ESTADO": "ABIERTO",
-            "CHECKIN": hoy,
+            "CHECKIN": checkin_definitivo, # Se usa la fecha determinada/elegida
             "REGISTRO": nuevo_registro
         }
         updates.update(datos_recopilados)
@@ -211,19 +246,50 @@ def realizar_checkin():
                 _editar_huesped_db(numero, updates)
             print(f"\n✔ Checkin realizado para {huesped['APELLIDO'].title()} {huesped['NOMBRE'].title()} en la habitación {huesped['HABITACION']}.")
             
-            # Opcional: Log de auditoría
+            # Log de auditoría
             log = (
                 f"[{marca_de_tiempo()}] CHECK-IN REALIZADO:\n"
                 f"Huésped: {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()} (Nro: {numero})\n"
-                f"Habitación: {huesped['HABITACION']}\n"
+                f"Habitación: {huesped['HABITACION']} | Fecha definitiva: {checkin_definitivo}\n"
                 f"Acción realizada por: {usuarios.sesion.usuario}" 
             )
+            # Puedes simplificar la adición de la fecha programada al log así:
+            if checkin_definitivo != checkin_programado:
+                log = f"Fecha programada: {checkin_programado}\n" + log
+                
             registrar_log("checkins.log", log) 
             
             return # Termina la función
         except Exception as e:
             print(f"\n❌ Error al actualizar la base de datos: {e}")
             return
+
+def _pedir_fecha_checkin_real(fecha_programada):
+    """
+    Pide la fecha real del check-in, validando el rango entre la fecha programada y hoy.
+    Utiliza pedir_fecha_valida(allow_past=True) para que acepte fechas pasadas.
+    """
+    hoy = date.today()
+    min_date = parse_fecha_a_datetime(fecha_programada).date()
+    max_date = hoy
+    
+    # ⚠️ Nota: Usamos allow_past=True para permitir que se ingresen fechas anteriores
+    # a hoy, ya que min_date siempre será anterior a hoy en este contexto.
+    leyenda = (
+        f"Ingresá la fecha definitiva del Check-in, entre {formatear_fecha(min_date.isoformat())} y {formatear_fecha(max_date.isoformat())}: "
+    )
+    
+    print("\n⚠️  El check-in estaba programado para un día anterior.") 
+
+    while True:
+        fecha_str_iso = pedir_fecha_valida(leyenda, allow_past=True, confirmacion=False)
+        # Convertimos la ISO string a objeto date para la comparación de rango.
+        fecha_real = date.fromisoformat(fecha_str_iso)
+        
+        if min_date <= fecha_real <= max_date:
+            return fecha_real.isoformat()
+        else:
+            print("❌ Fecha fuera del rango permitido.")
 
 @usuarios.requiere_acceso(1)
 def realizar_checkout():
@@ -723,7 +789,7 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
     
     # 2. Consumos pendientes
     print("\n=========================================")
-    print(f"💰 Detalle de la cuenta pendiente:")
+    print("💰 Detalle de la cuenta pendiente:")
     print(f"   Consumos:          R {total_consumos_bruto:.2f}")
     print(f"   Propina (10%):     R {propina:.2f}")
     print(f"   TOTAL PENDIENTE:   R {total_pendiente:.2f}")

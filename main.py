@@ -1,5 +1,7 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
+#
+
 #Que permita cancelar al pedir la fecha y demás.
 
 #Muestreo de cortesías en generar_reportes, con opción diario, semanal, mensual, histórico. Requiere mínimo lvl 2.
@@ -102,7 +104,7 @@ def cortesias_existe():
         print(f"❌ Error al crear la tabla CORTESIAS: {e}")
 
 def inicio():
-    leyenda = "\n¿Qué querés hacer?:\n1.🧘 Gestion de huéspedes\n2.📋 Gestion de consumos\n3.🛍️  Gestion de productos\n4.📦 Gestion de inventario\n5.📈 Gestion de reportes\n6.👤 Gestion de usuarios\n0.❌ Cerrar\n"
+    leyenda = "\n¿Qué querés hacer?:\n1.🧘 Gestion de huéspedes\n2.📋 Gestion de consumos\n3.🛍️ Gestion de productos\n4.📦 Gestion de inventario\n5.📈 Gestion de reportes\n6.👤 Gestion de usuarios\n0.❌ Cerrar\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=6)
         if respuesta == 0:
@@ -219,7 +221,7 @@ def gestionar_reportes():
 @requiere_acceso(3)
 def gestionar_usuarios():
     print("\n--👤Menú de Gestión de Usuarios--")
-    leyenda = "1.➕ Crear nuevo usuario\n2.✏️  Editar usuario\n3.🗑️  Eliminar usuario\n4.👥 Mostrar usuarios\n5.␎  Cerrar sesión\n0. ⮐ Volver al menú principal\n"
+    leyenda = "1.➕ Crear nuevo usuario\n2.✏️  Editar usuario\n3.🗑️  Eliminar usuario\n4.👥 Mostrar usuarios\n5. ␎ Cerrar sesión\n0. ⮐ Volver al menú principal\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if respuesta == 1:

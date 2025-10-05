@@ -49,8 +49,8 @@ def imprimir_huesped(huesped):
     print("-" * 40)
 
 def imprimir_huespedes(huespedes):
-    print(f"{'NUMERO':<6} {'APELLIDO':<15} {'NOMBRE':<15} {'ESTADO':^10} {'HAB':^5} {'CHECKIN':^12} {'CHECKOUT':^12}")
-    print("-" * 80)
+    print(f"{'NUMERO':<6} {'APELLIDO':<15} {'NOMBRE':<15} {'HAB':^5} {'ESTADO':^10} {'CON':^5} {'CHECKIN':^12} {'CHECKOUT':^12}")
+    print("-" * 85)
     for _, h in enumerate(huespedes, start=1):
         numero = h["NUMERO"]
         apellido = h["APELLIDO"]
@@ -59,6 +59,7 @@ def imprimir_huespedes(huespedes):
         habitacion = h["HABITACION"]
         checkin = formatear_fecha(h["CHECKIN"])
         checkout = formatear_fecha(h["CHECKOUT"])
+        contingente = h["CONTINGENTE"]
         # --- CAPITALIZACIÓN PARA IMPRESIÓN ---
         # Capitalizar la primera letra de cada palabra para apellido y nombre
         apellido_display = ' '.join(word.capitalize() for word in str(apellido).split())
@@ -68,10 +69,76 @@ def imprimir_huespedes(huespedes):
         apellido_display = (apellido_display[:12] + '...') if len(apellido_display) > 15 else apellido_display
         nombre_display = (nombre_display[:12] + '...') if len(nombre_display) > 15 else nombre_display
         # Impresión
-        print(f"{numero:<6} {apellido_display:<15} {nombre_display:<15} {estado:<10} {habitacion:^5} {checkin:<12} {checkout:<12}")
+        print(f"{numero:<6} {apellido_display:<15} {nombre_display:<15} {habitacion:^5} {estado:<10} {contingente:^5} {checkin:<12} {checkout:<12}")
     input("\nPresioná Enter para continuar...")
 
-def pedir_fecha_valida(mensaje, allow_past=False):
+def imprimir_producto(producto):
+    if not producto:
+        print("\n❌ No hay producto para mostrar.")
+        return
+    print("\nProducto seleccionado:")
+    columnas_a_mostrar = {
+        "CODIGO": "CODIGO",
+        "NOMBRE": "NOMBRE",
+        "PRECIO": "PRECIO",
+        "STOCK": "STOCK",
+        "ALERTA": "ALERTA",
+        "PINMEDIATO": "PINMEDIATO"
+    }
+    for col_key, col_display in columnas_a_mostrar.items():
+        val = producto[col_key]
+        display_val = val
+        
+        if col_key == "NOMBRE":
+            if isinstance(val, str):
+                display_val = val.capitalize()
+        elif col_key == "PRECIO":
+            display_val = f"R {val:.2f}"
+        elif col_key == "STOCK":
+            if val == -1:
+                display_val = "∞"
+        elif col_key == "PINMEDIATO":
+            display_val = "Sí" if val == 1 else "No"
+        elif col_key == "ALERTA":
+            display_val = str(val) if val is not None else "-"
+            
+        print(f"{col_display:<15}: {display_val}")
+
+def imprimir_productos(productos):
+    if not productos:
+        print("No hay productos para mostrar.")
+        return
+
+    header_format = "{:<8} {:<35} {:<12} {:<8}"
+    line_separator = "-" * 70  # Ajustar longitud
+
+    print("\nListado de Productos\n")
+    # Imprimir la cabecera de la tabla
+    print(header_format.format("CÓDIGO", "NOMBRE", "PRECIO", "STOCK"))
+    print(line_separator)
+
+    # Imprimir cada producto en una fila
+    for producto in productos:
+        # Asegúrate de que los datos estén en el formato correcto para la impresión
+        # Ya que db.obtener_todos devuelve una lista de diccionarios, es mejor acceder por claves
+        # para evitar errores de "too many values to unpack".
+        nombre_original = producto['NOMBRE']
+        
+        # --- CAPITALIZACIÓN Y TRUNCADO PARA IMPRESIÓN ---
+        # Asegura que el nombre no exceda los 35 caracteres definidos en el header_format
+        nombre_display = nombre_original.capitalize()
+        if len(nombre_display) > 35:
+            nombre_display = nombre_display[:32] + '...'
+
+        precio_display = f"R {producto['PRECIO']:.2f}"
+        stock_display = "∞" if producto['STOCK'] == -1 else str(producto['STOCK'])
+
+        print(header_format.format(producto['CODIGO'], nombre_display, precio_display, stock_display))
+
+    print(line_separator)
+    input("\nPresioná Enter para continuar...")
+
+def pedir_fecha_valida(mensaje, allow_past=False, confirmacion=True):
     while True:
         respuesta_fecha = input(mensaje).strip()
         fecha = None
@@ -105,6 +172,8 @@ def pedir_fecha_valida(mensaje, allow_past=False):
         if fecha:
             if fecha < date.today():
                 if allow_past:
+                    if not confirmacion:
+                        return fecha.isoformat()
                     respuesta = pedir_confirmacion("\n⚠️  La fecha de check-in es anterior a hoy. ¿Desea registrarla de todas formas? (si/no): ")
                     if respuesta == "si":
                         return fecha.isoformat()
@@ -394,69 +463,3 @@ def habitacion_ocupada(habitacion, checkin, checkout, excluir_numero=None):
             return True  # Está ocupada en ese rango
 
     return False  # Libre en esas fechas
-
-def imprimir_producto(producto):
-    if not producto:
-        print("\n❌ No hay producto para mostrar.")
-        return
-    print("\nProducto seleccionado:")
-    columnas_a_mostrar = {
-        "CODIGO": "CODIGO",
-        "NOMBRE": "NOMBRE",
-        "PRECIO": "PRECIO",
-        "STOCK": "STOCK",
-        "ALERTA": "ALERTA",
-        "PINMEDIATO": "PINMEDIATO"
-    }
-    for col_key, col_display in columnas_a_mostrar.items():
-        val = producto[col_key]
-        display_val = val
-        
-        if col_key == "NOMBRE":
-            if isinstance(val, str):
-                display_val = val.capitalize()
-        elif col_key == "PRECIO":
-            display_val = f"R {val:.2f}"
-        elif col_key == "STOCK":
-            if val == -1:
-                display_val = "∞"
-        elif col_key == "PINMEDIATO":
-            display_val = "Sí" if val == 1 else "No"
-        elif col_key == "ALERTA":
-            display_val = str(val) if val is not None else "-"
-            
-        print(f"{col_display:<15}: {display_val}")
-
-def imprimir_productos(productos):
-    if not productos:
-        print("No hay productos para mostrar.")
-        return
-
-    header_format = "{:<8} {:<35} {:<12} {:<8}"
-    line_separator = "-" * 70  # Ajustar longitud
-
-    print("\nListado de Productos\n")
-    # Imprimir la cabecera de la tabla
-    print(header_format.format("CÓDIGO", "NOMBRE", "PRECIO", "STOCK"))
-    print(line_separator)
-
-    # Imprimir cada producto en una fila
-    for producto in productos:
-        # Asegúrate de que los datos estén en el formato correcto para la impresión
-        # Ya que db.obtener_todos devuelve una lista de diccionarios, es mejor acceder por claves
-        # para evitar errores de "too many values to unpack".
-        nombre_original = producto['NOMBRE']
-        
-        # --- CAPITALIZACIÓN Y TRUNCADO PARA IMPRESIÓN ---
-        # Asegura que el nombre no exceda los 35 caracteres definidos en el header_format
-        nombre_display = nombre_original.capitalize()
-        if len(nombre_display) > 35:
-            nombre_display = nombre_display[:32] + '...'
-
-        precio_display = f"R {producto['PRECIO']:.2f}"
-        stock_display = "∞" if producto['STOCK'] == -1 else str(producto['STOCK'])
-
-        print(header_format.format(producto['CODIGO'], nombre_display, precio_display, stock_display))
-
-    print(line_separator)
-    input("\nPresioná Enter para continuar...")

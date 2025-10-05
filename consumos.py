@@ -121,9 +121,9 @@ def _editar_consumos_agregados(consumos):
 
     print("\nConsumos recién agregados:")
     for i, consumo in enumerate(consumos):
-        print(f"  {i + 1}. Producto: {consumo['nombre']} (Cód: {consumo['codigo']}), Cantidad: {consumo['cantidad']}")
+        print(f"  {i + 1}. Producto: {consumo['nombre'].title():<20} (Cód: {consumo['codigo']:<10}), Cantidad: {consumo['cantidad']}")
 
-    if pedir_confirmacion("\n¿Querés eliminar alguno de los consumos recién agregados? (si/no): ", defecto="no") != "si":
+    if pedir_confirmacion("\n¿Querés confirmar estos consumos? (si/no): ", defecto="si") != "no":
         return consumos
     
     a_eliminar_str = input("\nIngresá los items a eliminar (separados por comas o espacios), ó '0' para cancelar: ").strip()
@@ -145,7 +145,7 @@ def _editar_consumos_agregados(consumos):
     if indices_a_eliminar:
         for indice in sorted(list(indices_a_eliminar), reverse=True):
             consumo_eliminado = consumos.pop(indice)
-            print(f"✔ Consumo de '{consumo_eliminado['nombre']}' eliminado.")
+            print(f"\n✔ Consumo de '{consumo_eliminado['nombre']}' eliminado.")
     
     return consumos
 
@@ -208,7 +208,11 @@ def ver_consumos():
 
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ?", (habitacion,))
         if huesped is None:
-            print("❌ Habitación no encontrada.")
+            print("❌ Habitación no cerrada.")
+            continue
+        
+        if huesped.get("ESTADO") != 'ABIERTO':
+            print(f"❌ La habitación {habitacion} está reservada para {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}, pero todavía no hizo checkin.")
             continue
 
         query = """SELECT C.ID, C.FECHA, C.PRODUCTO, P.NOMBRE, C.CANTIDAD, P.PRECIO 
@@ -332,50 +336,69 @@ def eliminar_consumos():
             cantidad = consumo["CANTIDAD"]
             print(f"{idx:<3} {formatear_fecha(fecha):<12} {producto_nombre:<30} {cantidad:<10}")
 
-        seleccion = input("\nIngresá el/los número(s) de consumo a eliminar separados por coma (ej: 1,3): ").strip().split(",")
-        a_eliminar = []
-        for item in seleccion:
-            item = item.strip()
-            if item.isdigit():
-                idx = int(item)
-                if 1 <= idx <= len(consumos):
-                    a_eliminar.append(idx - 1)
-                else:
-                    print(f"\n❌ Índice ({idx}) fuera de rango: ")
-            else:
-                print(f"\n❌ Entrada inválida: {item}")
+        _seleccionar_consumos_a_eliminar(huesped, consumos) 
         
-        if not a_eliminar:
-                print("❌ No se seleccionaron consumos válidos.")
-                return
-        
-        consumos_a_mostrar = [consumos[i] for i in a_eliminar]
-        
-        print("\n📋 Consumo(s) seleccionado(s) para eliminar:")
-        print(f"{'#':<3} {'PRODUCTO':<30} {'CANTIDAD':<10} {'FECHA':<12}")
-        print("-" * 60)
-        
-        # Obtenemos los números originales (1-based) para mostrar:
-        numeros_seleccionados = [i + 1 for i in a_eliminar] 
-        
-        for i, consumo in enumerate(consumos_a_mostrar):
-            fecha = consumo["FECHA"]
-            producto_nombre = consumo["NOMBRE"]
-            cantidad = consumo["CANTIDAD"]
-            # Usamos el número original de la lista para mostrar la referencia
-            print(f"{numeros_seleccionados[i]:<3} {producto_nombre:<30} {cantidad:<10} {formatear_fecha(fecha):<12}")
-
-        if pedir_confirmacion(f"\n¿Estás seguro que querés eliminar los siguientes consumo(s)? (si/no): ") != "si":
-            print("❌ Operación cancelada.")
-            return
-
-        # Ejecutar eliminación en DB
-        try:
-            eliminados = _eliminar_consumos_db(huesped, consumos, a_eliminar)
-            print(f"✔ Se eliminaron {eliminados} consumos.")
-        except Exception as e:
-            print(f"\n❌ {e}")
         return
+
+def _seleccionar_consumos_a_eliminar(huesped, consumos):
+    """
+    Gestiona la selección, validación, confirmación y eliminación de consumos.
+
+    :param huesped: Diccionario con la información del huésped.
+    :param consumos: Lista de diccionarios de consumos registrados para el huésped.
+    :return: True si se eliminó al menos un consumo, False si se canceló o no se seleccionó nada válido.
+    """
+    # 1. Selección de consumos
+    seleccion = input("\nIngresá el/los número(s) de consumo a eliminar separados por coma (ej: 1,3): ").strip().split(",")
+    a_eliminar = [] # Contendrá los índices (0-based) de 'consumos' que se van a eliminar
+
+    # 2. Validación de la selección
+    for item in seleccion:
+        item = item.strip()
+        if item.isdigit():
+            idx = int(item)
+            if 1 <= idx <= len(consumos):
+                a_eliminar.append(idx - 1) # Guardamos el índice 0-based
+            else:
+                print(f"\n❌ Índice ({idx}) fuera de rango: ")
+        else:
+            print(f"\n❌ Entrada inválida: {item}")
+    
+    if not a_eliminar:
+        print("❌ No se seleccionaron consumos válidos.")
+        return False
+    
+    # 3. Mostrar consumos seleccionados para confirmación
+    consumos_a_mostrar = [consumos[i] for i in a_eliminar]
+    
+    print("\n📋 Consumo(s) seleccionado(s) para eliminar:")
+    print(f"{'#':<3} {'PRODUCTO':<30} {'CANTIDAD':<10} {'FECHA':<12}")
+    print("-" * 60)
+    
+    # Obtenemos los números originales (1-based) para mostrar:
+    numeros_seleccionados = [i + 1 for i in a_eliminar] 
+    
+    for i, consumo in enumerate(consumos_a_mostrar):
+        fecha = consumo["FECHA"]
+        producto_nombre = consumo["NOMBRE"]
+        cantidad = consumo["CANTIDAD"]
+        # Usamos el número original de la lista para mostrar la referencia
+        print(f"{numeros_seleccionados[i]:<3} {producto_nombre:<30} {cantidad:<10} {formatear_fecha(fecha):<12}")
+
+    # 4. Pedir confirmación
+    if pedir_confirmacion("\n¿Estás seguro que querés eliminar los siguientes consumo(s)? (si/no): ") != "si":
+        print("❌ Operación cancelada.")
+        return False
+
+    # 5. Ejecutar eliminación en DB
+    try:
+        # Se mantiene la llamada original a _eliminar_consumos_db
+        eliminados = _eliminar_consumos_db(huesped, consumos, a_eliminar)
+        print(f"✔ Se eliminaron {eliminados} consumos.")
+        return True
+    except Exception as e:
+        print(f"\n❌ Error al eliminar en la base de datos: {e}")
+        return False
 
 def _eliminar_consumos_db(huesped, consumos, a_eliminar):
     """
