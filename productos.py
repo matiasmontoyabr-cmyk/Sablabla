@@ -419,7 +419,7 @@ def eliminar_producto():
             return
         
         try:
-            producto = db.obtener_uno("SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
+            producto = db.obtener_uno("SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, PINMEDIATO FROM PRODUCTOS WHERE CODIGO = ?", (codigo,))
             if not producto:
                 print("\n⚠️  Producto no encontrado.")
                 continue

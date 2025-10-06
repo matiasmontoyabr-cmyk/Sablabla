@@ -36,7 +36,7 @@ def usuarios_existe():
             CREATE TABLE IF NOT EXISTS USUARIOS (
                 ID INTEGER PRIMARY KEY,
                 USUARIO TEXT NOT NULL UNIQUE,
-                CONTRASEÑA_HASH TEXT NOT NULL,
+                CONTRASEÑA_HASH BLOB NOT NULL,
                 NIVEL_DE_ACCESO INTEGER NOT NULL
             )
         ''')
@@ -151,7 +151,7 @@ def gestionar_huespedes():
             return
 
 def gestionar_consumos():
-    leyenda = "\nGestión de consumos\n1.➕ Agregar consumo\n2.🔍 Ver consumos\n3.🗑️  Eliminar consumos\n4.💸 Registrar pago\n5.🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de consumos\n1.➕ Agregar consumo\n2.🔍 Ver consumos\n3.🗑️ Eliminar consumos\n4.💸 Registrar pago\n5.🆓 Consumo de cortesía\n0. ⮐ Volver al inicio\n"
     while True:
         respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=5)
         if respuesta == 1:
@@ -240,7 +240,7 @@ def gestionar_usuarios():
 ### PROGRAMA ###
 
 try:
-    print("Bienvenido al sistema de gestión de la posada Onda de mar 2.2 by MatCodePro")
+    print("Bienvenido al sistema de gestión de la posada Onda de mar 2.4 by MatCodePro")
     usuarios_existe()
     productos_existe()
     huespedes_existe()

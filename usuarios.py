@@ -11,8 +11,6 @@ LONGITUD_MINIMA_PASS = 8
 
 PATRON_CARACTERES = r'^[a-zA-Z0-9\-\*/\+\.,@]+$' 
 
-SIMBOLO_REQUERIDO = r'[\-\*/\+\.,@]'
-
 class SesionActiva:
     def __init__(self):
         self.usuario = "Observador"
@@ -167,10 +165,6 @@ def _validar_contrasena(contrasena):
         print("\n⚠️  Solo se permiten letras, números, y los símbolos: - * / + . , @")
         return False
     
-    # 4. Validación de Carácter Especial REQUERIDO (DEBE tener al menos uno de ellos)
-    if not re.search(SIMBOLO_REQUERIDO, contrasena):
-        print("\n⚠️  La contraseña debe contener al menos uno de los siguientes símbolos: - * / + . , @")
-        return False
     return True
 
 @requiere_acceso(3)
@@ -192,7 +186,7 @@ def crear_usuario():
         # Si no existe, salimos del bucle para continuar con la creación
         break
     while True:
-        contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres y al menos uno de los siguientes símbolos: - * / + . , @: ").strip()
+        contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres: ").strip()
         
         if not _validar_contrasena(contrasena):
             continue # Vuelve a pedir la contraseña
@@ -205,7 +199,7 @@ def crear_usuario():
         nivel_de_acceso = int(pedir_entero("Nivel de acceso (0, 1, 2): ", minimo=0, maximo=2))
         if nivel_de_acceso in [0, 1, 2]:
             # Encriptar la contraseña
-            contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt())
             try:
                 with db.transaccion():
                     db.ejecutar("INSERT INTO USUARIOS (USUARIO, CONTRASEÑA_HASH, NIVEL_DE_ACCESO) VALUES (?, ?, ?)", 
@@ -268,7 +262,7 @@ def _editar_contrasena(usuario):
     """Maneja la lógica de validación y actualización de la contraseña."""
     while True:
         # Se asume que getpass y _validar_contrasena están definidas globalmente
-        contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres y al menos uno de los siguientes símbolos: - * / + . , @: ").strip()
+        contrasena = getpass("🔑 Ingresá una contraseña con al menos 8 caracteres: ").strip()
         
         if not _validar_contrasena(contrasena):
             continue 
@@ -282,7 +276,7 @@ def _editar_contrasena(usuario):
 
     try:
         # Se asume que bcrypt está disponible
-        contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        contraseña_hash = bcrypt.hashpw(contrasena.encode('utf-8'), bcrypt.gensalt())
         with db.transaccion():
             db.ejecutar("UPDATE USUARIOS SET CONTRASEÑA_HASH=? WHERE USUARIO=?", (contraseña_hash, usuario))
         print(f"\n✔ Contraseña de '{usuario}' modificada.")
