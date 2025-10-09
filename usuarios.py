@@ -110,7 +110,6 @@ def login_interactivo():
 def logout():
     """Cierra la sesión del usuario actual."""
     sesion.cerrar()
-    return
 
 def requiere_acceso(nivel_requerido):
     # Decorador que asegura que la función solo se ejecute si hay una sesión válida

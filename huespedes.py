@@ -56,7 +56,7 @@ def nuevo_huesped():
     if estado == "ABIERTO":
         telefono = pedir_telefono("Ingresá un whatsapp de contacto: ")
         email = pedir_mail()
-        documento = input("Ingersá el número de documento: ").strip()
+        documento = input("Ingresá el número de documento: ").strip()
         checkin = date.today().isoformat()
     if estado == "PROGRAMADO":
         checkin = pedir_fecha_valida("Ingresá la fecha de checkin: ", allow_past=True)
@@ -127,9 +127,8 @@ def _pedir_datos(huesped):
     telefono_actual = huesped["TELEFONO"]
     if not telefono_actual:
         nuevo_telefono = pedir_telefono("Ingresá un whatsapp de contacto : ")
-        if nuevo_telefono == 0:
-            updates["TELEFONO"] = huesped["TELEFONO"]
-        elif nuevo_telefono:
+        # Solo agrega al update si el usuario ingresó un valor válido y no canceló (0)
+        if nuevo_telefono != 0: 
             updates["TELEFONO"] = nuevo_telefono
 
     # 3. EMAIL
@@ -139,9 +138,7 @@ def _pedir_datos(huesped):
     # Condición: SOLO PEDIR el email si actualmente está vacío (incluyendo el caso "0")
     if not email_actual or email_actual == "0":
         nuevo_email = pedir_mail("Ingresá un email de contacto: ")
-        if nuevo_email == "":
-            updates["EMAIL"] = huesped["EMAIL"]
-        elif nuevo_email:
+        if nuevo_email != "":
             # Si el usuario ingresó un valor válido (la función pedir_mail lo garantiza)
             updates["EMAIL"] = nuevo_email
 
@@ -513,7 +510,8 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
             dcto_log += f"Descuento Final: R${valor:.2f} "
         
         if monto_dcto_final > 0:
-            print(f"{dcto_descripcion_final:<{LABEL_WIDTH}} R$ {-monto_dcto_final:>{VALUE_FORMAT_WIDTH}.2f}")
+            monto_negativo = -1 * float(monto_dcto_final)
+            print(f"{dcto_descripcion_final:<{LABEL_WIDTH}} R$ {monto_negativo:>{VALUE_FORMAT_WIDTH}.2f}")
 
     # --- TOTAL FINAL PENDIENTE ---
     total_pendiente = total_con_propina - monto_dcto_final

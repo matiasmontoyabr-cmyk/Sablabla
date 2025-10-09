@@ -88,7 +88,6 @@ def editar_inventario():
 
     # 1. Lógica de Edición de Inventario (a partir de aquí tu código original)
 
-    producto = producto_elegido
     codigo = producto["CODIGO"]
     nombre = producto["NOMBRE"].title()
     stock_anterior = producto["STOCK"]

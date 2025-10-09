@@ -140,7 +140,7 @@ def imprimir_productos(productos, todo=False):
     if not productos:
         print("No hay productos para mostrar.")
         return
-    if todo == False:
+    if todo is False:
         header_format = "{:<8} {:<35} {:<12} {:<8}"
         line_separator = "-" * 70  # Ajustar longitud
 

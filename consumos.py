@@ -400,7 +400,8 @@ def _imprimir_total(huesped, grand_subtotal):
                     dcto_descripcion = f"DESCUENTO (R$ {valor:.2f})"
 
                 if monto_dcto_consumos > 0:
-                    _formato_print(dcto_descripcion + ":", -monto_dcto_consumos)
+                    monto_negativo = -1 * monto_dcto_consumos
+                    _formato_print(dcto_descripcion + ":", monto_negativo)
                     print("-" * ANCHO_TOTAL_LINEA)
 
         except (IndexError, ValueError):
@@ -731,7 +732,7 @@ def asignar_descuento():
                 descuento_display = f"R$ {float(valor_str):.2f} {lugar_display}"
             
             print(f"Descuento actual: {descuento_display}")
-        except:
+        except Exception:
             # Captura si el formato es el antiguo o está corrupto
             print("Advertencia: Descuento actual en formato desconocido.")
     else:
@@ -801,7 +802,7 @@ def asignar_descuento():
         # Asumiendo que _editar_huesped_db está disponible
         with db.transaccion():
             _editar_huesped_db(numero_huesped, updates) 
-        print(f"\n✔ Operación de descuento realizada correctamente.")
+        print("\n✔ Operación de descuento realizada correctamente.")
     except Exception as e:
         print(f"\n❌ Error al aplicar el descuento: {e}")
 
