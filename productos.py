@@ -11,7 +11,8 @@ LISTA_BLANCA_PRODUCTOS = [
     "PRECIO",
     "STOCK",
     "ALERTA",
-    "PINMEDIATO"
+    "PINMEDIATO",
+    "GRUPO"
 ]
 
 @usuarios.requiere_acceso(1)
@@ -62,11 +63,15 @@ def nuevo_producto():
         
     precio = pedir_precio("Ingresá el precio del producto: ")
     stock = pedir_entero("Ingresá el stock inicial: (-1 = infinito): ", minimo = -1)
-    alerta = pedir_entero("Ingresá el nivel de alerta de stock ó deje vacío para usar el valor por defecto (5): ", minimo=1, defecto=5)
-    grupo = pedir_grupo()
-    if grupo is False:
-        # Si pedir_grupo() devolvió False, no intentamos la inserción
-        return
+    if stock == -1:
+        alerta = 1 # Si el stock es infinito, la alerta se fija en 1
+        grupo = None # Si el stock es infinito, no puede tener grupo
+    else:
+        alerta = pedir_entero("Ingresá el nivel de alerta de stock ó deje vacío para usar el valor por defecto (5): ", minimo=1, defecto=5)
+        grupo = pedir_grupo()
+        if grupo is False:
+            # Si pedir_grupo() devolvió False, no intentamos la inserción
+            return
     respuesta_pago_inmediato = pedir_confirmacion("¿El producto se debe pagar en el momento? (si/no): ", defecto="no")
     pago_inmediato = 0 if respuesta_pago_inmediato != "si" else 1
     
@@ -118,26 +123,49 @@ def _guardar_producto_y_notificar(codigo, nombre, precio, stock, alerta, grupo, 
 
 @usuarios.requiere_acceso(0)
 def listado_productos():
-    leyenda = "\n¿Cómo querés ordenar los productos? Por código (1), por nombre (2) ó cancelar (0): "
+    leyenda = "\n¿Cómo querés ordenar los productos? Por código (1), por nombre (2), por grupo (3) ó cancelar (0): "
     while True:
-        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=2)
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=3)
         if opcion == 0:
             return
         elif opcion == 1:
             orden = "CODIGO"
+            query_type = "SIMPLE"
             break
         elif opcion == 2:
             orden = "NOMBRE"
+            query_type = "SIMPLE"
+            break
+        elif opcion == 3:
+            query_type = "GRUPO" # Nueva lógica para ordenar por grupo y filtrar
             break
         
     try:
-        productos = db.obtener_todos(f"SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS ORDER BY {orden}")
+        # Se asegura que la columna GRUPO se seleccione siempre, ya que es necesaria para la opción 3.
+        COLUMNAS_BASE = "CODIGO, NOMBRE, PRECIO, STOCK, ALERTA, GRUPO"
+        
+        if query_type == "SIMPLE":
+            # Opción 1 (Código) o 2 (Nombre)
+            query = f"SELECT {COLUMNAS_BASE} FROM PRODUCTOS ORDER BY {orden}"
+            productos = db.obtener_todos(query)
+            
+        elif query_type == "GRUPO":
+            # Opción 3 (Grupo): Filtra productos con grupo asignado y ordena por GRUPO, luego por NOMBRE
+            query = (
+                f"SELECT {COLUMNAS_BASE} FROM PRODUCTOS "
+                f"WHERE GRUPO IS NOT NULL AND GRUPO != '' " # Filtra los que tienen grupo
+                f"ORDER BY GRUPO, NOMBRE"
+            )
+            productos = db.obtener_todos(query)
+
         if not productos:
-            print("\n❌ No hay productos registrados.")
+            mensaje = "con un grupo asignado" if query_type == "GRUPO" else ""
+            print(f"\n❌ No hay productos registrados {mensaje}.")
             return
         else:        
             imprimir_productos(productos)
             return
+        
     except Exception as e:
         print(f"\n❌ Error al obtener el listado de productos: {e}")
         return
@@ -204,10 +232,14 @@ def buscar_producto():
         return
 
 def _ejecutar_busqueda(criterio, valor):
-    #Genera y ejecuta la consulta SQL basada en el criterio dado."""
+    """Genera y ejecuta la consulta SQL basada en el criterio dado."""
     
+    # Lista base de columnas a seleccionar (incluyendo la faltante PINMEDIATO)
+    COLUMNAS_BASE = "CODIGO, NOMBRE, PRECIO, PINMEDIATO, STOCK, ALERTA, GRUPO" # Asumo que PINMEDIATO y GRUPO son necesarios
+
     if criterio == "codigo":
-        query = "SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE CODIGO = ?"
+        # CORRECCIÓN: Se agrega PINMEDIATO (y GRUPO si es relevante) a la selección.
+        query = f"SELECT {COLUMNAS_BASE} FROM PRODUCTOS WHERE CODIGO = ?" 
         # Como el código es único, obtener solo uno es más eficiente
         return db.obtener_uno(query, (valor,))
 
@@ -215,17 +247,21 @@ def _ejecutar_busqueda(criterio, valor):
         where_clauses = ["LOWER(NOMBRE) LIKE ?"] * len(valor)
         params = [f"%{palabra}%" for palabra in valor]
         
-        # Usar LIKE para búsquedas parciales (añadir comodines % manualmente)
-        query = f"SELECT CODIGO, NOMBRE, PRECIO, STOCK, ALERTA FROM PRODUCTOS WHERE {' OR '.join(where_clauses)} ORDER BY NOMBRE"
+        # CORRECCIÓN: Se agrega PINMEDIATO (y GRUPO si es relevante) a la selección.
+        query = f"SELECT {COLUMNAS_BASE} FROM PRODUCTOS WHERE {' OR '.join(where_clauses)} ORDER BY NOMBRE"
         productos = db.obtener_todos(query, params)
 
         if productos:
+            # Lógica de ordenamiento por coincidencia (se mantiene intacta)
             resultados = [(prod, sum(1 for palabra in valor if palabra in prod["NOMBRE"].lower())) for prod in productos]
             resultados.sort(key=lambda x: x[1], reverse=True)
             productos_ordenados = [prod_score[0] for prod_score in resultados]
             return productos_ordenados
         else:
-            return [] # Si el criterio no es reconocido, devuelve una lista vacía
+            return []
+    
+    # Si el criterio no es reconocido o no hay resultados
+    return []
 
 @usuarios.requiere_acceso(2)
 def editar_producto():
@@ -363,9 +399,18 @@ def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
     # Función centralizada que actualiza la BD y registra el cambio en el log.
 
     codigo_original = producto_original["CODIGO"]
+    actualizacion_exitosa = _actualizar_producto_db(codigo_original, campo, nuevo_valor)
+
+    if not actualizacion_exitosa:
+        # Si la actualización falló (sea por seguridad o integridad), los errores ya fueron impresos.
+        # Por ejemplo, si _actualizar_producto_db falla por la lista blanca, imprime:
+        # "❌ ERROR de seguridad: El campo 'GRUPO' no está permitido para ser actualizado."
+        # y esta función retorna False.
+        return False
+
+    # Si la ejecución a bajo nivel fue True, intentamos registrar la transacción y log.
     try:
         with db.transaccion():
-            _actualizar_producto_db(db, codigo_original, campo, nuevo_valor)
 
             log = (
                 f"[{marca_de_tiempo()}] PRODUCTO EDITADO por {usuarios.sesion.usuario}:\n"
@@ -383,7 +428,7 @@ def _actualizar_y_registrar_log(producto_original, campo, nuevo_valor):
         print(f"\n❌ Error al actualizar el {campo.lower()}: {e}")
     return False
 
-def _actualizar_producto_db(database, codigo, campo, valor):
+def _actualizar_producto_db(codigo, campo, valor):
     # 1. Validación de la Lista Blanca (El parche de seguridad)
     if campo not in LISTA_BLANCA_PRODUCTOS:
         print(f"\n❌ ERROR de seguridad: El campo '{campo}' no está permitido para ser actualizado.")
@@ -394,8 +439,7 @@ def _actualizar_producto_db(database, codigo, campo, valor):
         # a) El nombre del campo ({campo}) ha sido validado contra la lista blanca.
         # b) El valor (?) se pasa como parámetro, evitando inyección en el valor.
         sql = f"UPDATE PRODUCTOS SET {campo} = ? WHERE CODIGO = ?"
-        database.ejecutar(sql, (valor, codigo))
-        print(f"\n✔ Campo '{campo}' del producto {codigo} actualizado correctamente.")
+        db.ejecutar(sql, (valor, codigo))
         return True
         
     except sqlite3.IntegrityError:

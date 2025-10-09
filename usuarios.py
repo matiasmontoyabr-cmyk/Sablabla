@@ -93,7 +93,7 @@ def login(usuario, contraseña):
 
         if contraseña_hash and bcrypt.checkpw(contraseña.encode('utf-8'), contraseña_hash):
             sesion.iniciar(usuario, nivel_de_acceso)
-            print(f"\n✔ Inicio de sesión exitoso. Bienvenido, {sesion.usuario}.")
+            print(f"\n✔ Inicio de sesión exitoso. Bienvenido/a, {sesion.usuario}.")
             return True
 
     print("\n❌ Usuario o contraseña incorrectos.")
@@ -110,6 +110,7 @@ def login_interactivo():
 def logout():
     """Cierra la sesión del usuario actual."""
     sesion.cerrar()
+    return
 
 def requiere_acceso(nivel_requerido):
     # Decorador que asegura que la función solo se ejecute si hay una sesión válida
@@ -147,25 +148,6 @@ def requiere_acceso(nivel_requerido):
             return func(*args, **kwargs)
         return wrapper
     return decorador
-
-def _validar_contrasena(contrasena):
-    # 1. Valida que la contraseña no esté vacía
-    if not contrasena or not contrasena.strip(): 
-        print("\n❌ Error: La contraseña no puede estar vacía.")
-        return False
-    
-    # 2. Verifica si la contraseña cumple con los requisitos mínimos de seguridad.
-    if len(contrasena) < LONGITUD_MINIMA_PASS:
-        print(f"\n⚠️  La contraseña debe tener al menos {LONGITUD_MINIMA_PASS} caracteres.")
-        return False
-
-    # 3. Validación de Caracteres Permitidos
-    # Nota: Los símbolos en REGEX como - / * + deben ser escapados, por eso se usa '\-' y '*/+'
-    if not re.match(PATRON_CARACTERES, contrasena):
-        print("\n⚠️  Solo se permiten letras, números, y los símbolos: - * / + . , @")
-        return False
-    
-    return True
 
 @requiere_acceso(3)
 def crear_usuario():
@@ -210,6 +192,25 @@ def crear_usuario():
                 print(f"\n⚠️  Error: El usuario '{usuario}' ya existe.")
         else:
             print("\n⚠️  Nivel de acceso no válido. Debe ser 0, 1 o 2.")
+
+def _validar_contrasena(contrasena):
+    # 1. Valida que la contraseña no esté vacía
+    if not contrasena or not contrasena.strip(): 
+        print("\n❌ Error: La contraseña no puede estar vacía.")
+        return False
+    
+    # 2. Verifica si la contraseña cumple con los requisitos mínimos de seguridad.
+    if len(contrasena) < LONGITUD_MINIMA_PASS:
+        print(f"\n⚠️  La contraseña debe tener al menos {LONGITUD_MINIMA_PASS} caracteres.")
+        return False
+
+    # 3. Validación de Caracteres Permitidos
+    # Nota: Los símbolos en REGEX como - / * + deben ser escapados, por eso se usa '\-' y '*/+'
+    if not re.match(PATRON_CARACTERES, contrasena):
+        print("\n⚠️  Solo se permiten letras, números, y los símbolos: - * / + . , @")
+        return False
+    
+    return True
 
 @requiere_acceso(3)
 def mostrar_usuarios():

@@ -18,7 +18,8 @@ LISTA_BLANCA_HUESPED = [
     "CONTINGENTE",
     "REGISTRO",
     "ESTADO",
-    "HABITACION"
+    "HABITACION",
+    "DESCUENTO"
 ]
 
 @usuarios.requiere_acceso(1)
@@ -186,8 +187,9 @@ def realizar_checkin():
             print("\n❌ Checkin cancelado.")
             return
 
-        # Buscar huésped PROGRAMADO en esa habitación
-        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO'", (habitacion,))
+        # Buscar huésped PROGRAMADO más próximo o atrasado en esa habitación
+        # Ordenamos por CHECKIN ascendente para tomar el más antiguo/próximo.
+        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO' ORDER BY CHECKIN ASC", (habitacion,))
         if not huesped:
             print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
             continue
@@ -291,26 +293,65 @@ def _pedir_fecha_checkin_real(fecha_programada):
         else:
             print("❌ Fecha fuera del rango permitido.")
 
+def _editar_huesped_db(numero, updates_dict):
+    # Actualiza uno o varios campos del huésped dado su número de registro.
+    # updates_dict es un diccionario con {campo: valor}.
+
+    if not updates_dict:
+        print("\n⚠️  No hay cambios para aplicar.")
+        return
+
+    set_clauses = []
+    valores = []
+
+
+    for campo, valor in updates_dict.items():
+        # 1. Verifica que el nombre del campo esté en la lista blanca
+        if campo in LISTA_BLANCA_HUESPED:
+            # 2. Construye la cláusula SET con el nombre de columna filtrado
+            set_clauses.append(f"{campo} = ?")
+            # 3. Agrega el valor a la lista de parámetros (seguro)
+            valores.append(valor)
+        else:
+            # 4. (Opcional) Notifica o ignora los campos no válidos
+            print(f"⚠️  ADVERTENCIA DE SEGURIDAD: Campo '{campo}' ignorado (no permitido).")
+    
+    # Si después del filtrado no quedan campos para actualizar
+    if not set_clauses:
+        raise ValueError("⚠️  No quedaron campos válidos para actualizar.")
+
+    sql = f"UPDATE HUESPEDES SET {', '.join(set_clauses)} WHERE NUMERO = ?"
+
+    # Añadir el número del huésped al final de los valores para la cláusula WHERE
+    valores.append(numero)
+
+    try:
+        db.ejecutar(sql, tuple(valores))
+    except Exception as e:
+        print(f"\n❌ Error al actualizar el huésped en la DB: {e}")
+
 @usuarios.requiere_acceso(1)
 def realizar_checkout():
-    leyenda = "\nIngresá el número de habitación a cerrar, (*) para buscar ó (0) para cancelar: "
+    # 1. Obtener y mostrar la lista de habitaciones abiertas (CHECK-INs pendientes)
+    abiertas = db.obtener_todos("SELECT HABITACION, APELLIDO, NOMBRE FROM HUESPEDES WHERE ESTADO = 'ABIERTO' ORDER BY HABITACION")
+    
+    if not abiertas:
+        print("\n❌ No hay habitaciones abiertas en este momento.")
+        return
+
+    print("\n📋 Habitaciones abiertas:")
+    print(f"{'HAB':<5} {'APELLIDO':<20} {'NOMBRE':<20}")
+    print("-" * 45)
+    for huesped in abiertas:
+        print(f"{huesped['HABITACION']:<5} {huesped['APELLIDO'].title():<20} {huesped['NOMBRE'].title():<20}")
+    print("-" * 45)
+
+    # 2. Pedir el número de habitación
+    leyenda = "\nIngresá el número de habitación a cerrar ó (0) para cancelar: "
     while True:
-        habitacion = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1, maximo=7,)
+        habitacion = opcion_menu(leyenda, cero=True, minimo=1, maximo=7,)
         if habitacion == 0:
             return
-        if habitacion == "*":
-            abiertas = db.obtener_todos("SELECT HABITACION, APELLIDO, NOMBRE FROM HUESPEDES WHERE ESTADO = 'ABIERTO' ORDER BY HABITACION")
-            if not abiertas:
-                print("\n❌ No hay habitaciones abiertas en este momento.")
-                return
-            else:
-                print("\n📋 Habitaciones abiertas:")
-                print(f"{'HAB':<5} {'APELLIDO':<20} {'NOMBRE':<20}")
-                print("-" * 45)
-                for huesped in abiertas:
-                    print(f"{huesped['HABITACION']:<5} {huesped['APELLIDO'].title():<20} {huesped['NOMBRE'].title():<20}")
-                print("-" * 45)
-            continue
 
         # Buscar huésped ABIERTO en esa habitación
         huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", (habitacion,))
@@ -319,6 +360,9 @@ def realizar_checkout():
             continue
 
         imprimir_huesped(huesped)
+        if not pedir_confirmacion("\n¿Confirmás que querés realizar el checkout (si/no): ") == "si":
+            print("\n❌ Checkout cancelado por el usuario.")
+            return
         numero = huesped["NUMERO"]
         hoy = date.today().isoformat()
         separador = "\n---\n"
@@ -356,10 +400,175 @@ def realizar_checkout():
             
         except Exception as e:
             if str(e) != "Checkout cancelado por el usuario.":
-                 print(f"\n❌ Error al realizar el checkout. La operación fue revertida. {e}")
+                print(f"\n❌ Error al realizar el checkout. La operación fue revertida. {e}")
         return
 
-@usuarios.requiere_acceso(0)
+def _verificar_consumos_impagos(numero_huesped, registro_actual):
+    """
+    Verifica consumos impagos para un huésped, maneja el pago y la confirmación
+    de cierre, aplicando el descuento si existe. 
+    Retorna (True, registro_actualizado, total_final) si el checkout puede continuar, 
+    (False, None, total_final) si se cancela el checkout.
+    """
+    separador = "\n---\n"
+    
+    # 0. OBTENER INFORMACIÓN DEL HUÉSPED (Necesario para el descuento)
+    # Asumo que la tabla HUESPEDES tiene la columna DESCUENTO
+    huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero_huesped,))
+    if not huesped:
+        print(f"❌ Error: No se encontró el huésped con número {numero_huesped}.")
+        return False, None, 0.00
+    
+    # 1. Verificar consumos impagos (Calculando el total de consumos BRUTOS)
+    query = """
+        SELECT C.CANTIDAD, P.PRECIO
+        FROM CONSUMOS C
+        JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
+        WHERE C.HUESPED = ? AND C.PAGADO = 0
+    """
+    consumos_no_pagados = db.obtener_todos(query, (numero_huesped,))
+    
+    # Calcular el total de consumos BRUTOS (base para los cálculos)
+    grand_subtotal = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados)
+    
+    if not consumos_no_pagados:
+        print("\n✔ No hay consumos pendientes de pago para esta habitación.")
+        # Se devuelve True, el registro actual y un total final de 0.00
+        return True, registro_actual, 0.00
+
+    # 2. --- LÓGICA DE CÁLCULO DE TOTAL FINAL CON DESCUENTO ---
+    
+    LINE_WIDTH = 84
+    LABEL_WIDTH = 69
+    VALUE_FORMAT_WIDTH = 12 
+
+    # Variables de descuento
+    descuento_str = huesped.get("DESCUENTO")
+    monto_dcto_consumos, monto_dcto_final = 0.0, 0.0
+    lugar = tipo = valor = None
+    dcto_log = ""
+    
+    print("\n" + "=" * LINE_WIDTH)
+
+    # TOTAL DE CONSUMOS (BRUTOS)
+    # Se usa la misma alineación que en _imprimir_total()
+    print(f"{'TOTAL DE CONSUMOS (Bruto):':<{LABEL_WIDTH}} R$ {grand_subtotal:>{VALUE_FORMAT_WIDTH}.2f}")
+
+    # --- LÓGICA DE DESCUENTOS ---
+    if descuento_str:
+        try:
+            partes = descuento_str.split('-')
+            lugar, tipo, valor_str = partes[0], partes[1], partes[2]
+            valor = float(valor_str)
+
+            if lugar == 'consumos':
+                if tipo == 'pct':
+                    monto_dcto_consumos = grand_subtotal * (valor / 100.0)
+                    dcto_descripcion = f"DESCUENTO ({valor}%)"
+                    dcto_log += f"Descuento Consumos: {valor}% "
+                elif tipo == 'valor':
+                    monto_dcto_consumos = valor
+                    dcto_descripcion = f"DESCUENTO (R$ {valor:.2f})"
+                    dcto_log += f"Descuento Consumos: R${valor:.2f} "
+
+            if monto_dcto_consumos > 0:
+                print(f"{dcto_descripcion:<{LABEL_WIDTH}} R$ {-monto_dcto_consumos:>{VALUE_FORMAT_WIDTH}.2f}") 
+                print("-" * LINE_WIDTH)
+        
+        except (IndexError, ValueError):
+            print("❗ Advertencia: Formato de descuento inválido. Ignorando descuento.")
+            descuento_str = None 
+            lugar = None
+            dcto_log = "Advertencia: Descuento inválido ignorado. "
+    
+    # --- CÁLCULO DE SUBTOTAL Y PROPINA ---
+    subtotal_descontado = grand_subtotal - monto_dcto_consumos
+    
+    # Imprimir el Subtotal SÓLO si hubo un descuento sobre consumos
+    if monto_dcto_consumos > 0:
+        print(f"{'SUBTOTAL:':<{LABEL_WIDTH}} R$ {subtotal_descontado:>{VALUE_FORMAT_WIDTH}.2f}")
+    
+    propina = subtotal_descontado * 0.10
+    print(f"{'PROPINA (10%):':<{LABEL_WIDTH}} R$ {propina:>{VALUE_FORMAT_WIDTH}.2f}")
+
+    total_con_propina = subtotal_descontado + propina
+    
+    # Lógica de impresión SUBTOTAL + PROPINA (solo si aplica descuento final)
+    if descuento_str and lugar == 'final':
+        print("-" * LINE_WIDTH)
+        print(f"{'SUBTOTAL + PROPINA:':<{LABEL_WIDTH}} R$ {total_con_propina:>{VALUE_FORMAT_WIDTH}.2f}")
+
+    # --- DESCUENTO FINAL (Si aplica) ---
+    if descuento_str and lugar == 'final':
+        dcto_descripcion_final = ""
+        
+        if tipo == 'pct':
+            monto_dcto_final = total_con_propina * (valor / 100.0)
+            dcto_descripcion_final = f"DESCUENTO ({valor}%)"
+            dcto_log += f"Descuento Final: {valor}% "
+        elif tipo == 'valor':
+            monto_dcto_final = valor
+            monto_dcto_final = min(monto_dcto_final, total_con_propina) 
+            dcto_descripcion_final = f"DESCUENTO (R$ {valor:.2f})"
+            dcto_log += f"Descuento Final: R${valor:.2f} "
+        
+        if monto_dcto_final > 0:
+            print(f"{dcto_descripcion_final:<{LABEL_WIDTH}} R$ {-monto_dcto_final:>{VALUE_FORMAT_WIDTH}.2f}")
+
+    # --- TOTAL FINAL PENDIENTE ---
+    total_pendiente = total_con_propina - monto_dcto_final
+    print("=" * LINE_WIDTH)
+    
+    print(f"{'TOTAL PENDIENTE:':<{LABEL_WIDTH}} R$ {total_pendiente:>{VALUE_FORMAT_WIDTH}.2f}")
+    print("=" * LINE_WIDTH)
+    
+    # 4. Continuar con la lógica de pago
+    
+    respuesta_pago = pedir_confirmacion("\n⚠️ ¿Querés marcar estos consumos como pagados? (si/no): ")
+    
+    if respuesta_pago == "si":
+        try:
+            with db.transaccion():
+                # Marcar consumos como pagados
+                db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero_huesped,))
+                
+                # Actualizar registro del huésped
+                marca_tiempo = marca_de_tiempo()
+                registro_pago = (
+                    f"Se marcaron como pagados consumos e incluyó propina. {dcto_log}"
+                    f"Total cobrado: R{total_pendiente:.2f} "
+                    f"(Consumos Bruto: R{grand_subtotal:.2f}; Propina: R{propina:.2f}). "
+                    f"- {marca_tiempo}"
+                )
+                nuevo_registro = registro_actual + separador + registro_pago
+                _editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro}) 
+            
+            print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
+            return True, nuevo_registro, total_pendiente
+        
+        except Exception as e:
+            print(f"\n❌ Error al marcar consumos como pagados: {e}")
+            print("\n❌ Cierre cancelado debido a un error de pago.")
+            return False, None, total_pendiente 
+            
+    else:
+        # Preguntar si desea cerrar aun con deuda
+        confirmar_cierre = pedir_confirmacion("\n⚠️ ¿Querés cerrar la habitación con consumos impagos? (si/no): ")
+        if confirmar_cierre != "si":
+            print("\n❌ Cierre cancelado.")
+            return False, None, total_pendiente
+            
+        # Registra la acción de cierre con deuda
+        marca_tiempo = marca_de_tiempo()
+        registro_impago = f"ADVERTENCIA: Habitación cerrada con deuda pendiente (Total Final: R{total_pendiente:.2f}). {dcto_log} - {marca_tiempo}"
+        nuevo_registro_con_adv = registro_actual + separador + registro_impago
+        
+        print(f"\n✅ Habitación marcada para cierre. Se ha registrado la deuda pendiente (R {total_pendiente:.2f}).")
+        
+        # Se devuelve True y el registro con la advertencia
+        return True, nuevo_registro_con_adv, total_pendiente
+
+@usuarios.requiere_acceso(1)
 def buscar_huesped():
     opciones = {
         1: ("APELLIDO", lambda: pedir_nombre("Ingresá el apellido: ")),
@@ -381,6 +590,54 @@ def buscar_huesped():
             campo, get_valor = opciones[opcion]
             huesped = None
             huespedes = None
+
+            if campo == "HABITACION":
+                num_habitacion = get_valor()
+                if not num_habitacion:
+                    print("\n⚠️  El número de habitación no puede estar vacío.")
+                    continue
+                
+                # Pedir la fecha para verificar la estadía
+                print("\n📅 Ahora ingresá la fecha para verificar la ocupación.")
+                fecha_busqueda = pedir_fecha_valida(
+                    "Ingresá la fecha para verificar ocupación ó (0) para cancelar: ", 
+                    allow_past=True, # Permitir buscar en fechas pasadas
+                    confirmacion=False, # No preguntar si es fecha pasada, solo obtenerla
+                    cero=True, # Permite cancelar con '0'
+                    vacio = True
+                )
+                if fecha_busqueda is None:
+                    # El usuario ingresó '0'
+                    print("\n❌ Búsqueda cancelada.")
+                    return
+
+                # Si la cadena está vacía, usamos la fecha de hoy
+                if fecha_busqueda == "":
+                    fecha_busqueda = date.today().isoformat()
+                else:
+                    fecha_busqueda = fecha_busqueda
+
+                # La consulta busca un huésped en esa habitación, cuya fecha de CHECKIN
+                # sea menor o igual a la fecha de búsqueda, y cuya fecha de CHECKOUT
+                # sea mayor o igual a la fecha de búsqueda O sea 'NULL' (todavía abierto).
+                query = """
+                    SELECT * FROM HUESPEDES 
+                    WHERE HABITACION = ? 
+                      AND CHECKIN <= ? 
+                      AND (CHECKOUT >= ? OR ESTADO = 'ABIERTO') 
+                      AND ESTADO != 'CERRADO'
+                    ORDER BY CHECKIN DESC
+                    LIMIT 1
+                """
+                # Usamos la misma fecha de búsqueda dos veces para el rango
+                huesped = db.obtener_uno(query, (num_habitacion, fecha_busqueda, fecha_busqueda))
+                
+                if huesped:
+                    print(f"\n✔ Huésped encontrado en la habitación {num_habitacion} el {formatear_fecha(fecha_busqueda)}.")
+                    imprimir_huesped(huesped)
+                else:
+                    print(f"\n❌ La habitación {num_habitacion} no estaba ocupada el {formatear_fecha(fecha_busqueda)}.")
+                return # Terminamos la función ya que es una búsqueda específica
 
             if campo == "*":
                 huespedes = db.obtener_todos("SELECT * FROM HUESPEDES ORDER BY LOWER(APELLIDO), LOWER(NOMBRE)")
@@ -450,162 +707,6 @@ def cambiar_estado():
         _actualizar_a_cerrado(numero, registro_anterior, separador)
     
     # La función termina aquí, el programa vuelve al menú principal.
-
-@usuarios.requiere_acceso(1)
-def editar_huesped():
-    leyenda = "\nIngresá el número de huésped que querés editar, (*) para buscar ó (0) para cancelar: "
-    while True:
-        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
-        if numero == "*":
-            return buscar_huesped()
-        if numero == 0:
-            print("Edición cancelada.")
-            return
-
-        numero = int(numero)
-        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-        if huesped is None:
-            print("Huésped no encontrado.")
-            continue
-
-        imprimir_huesped(huesped)
-        break
-    campos = {
-        "1": ("APELLIDO", lambda: input("\nIngresá el nuevo apellido: ").strip()),
-        "2": ("NOMBRE", lambda: input("\nIngresá el nuevo nombre: ").strip()),
-        "3": ("TELEFONO", lambda: pedir_telefono("\nIngresá el nuevo número de WhatsApp (11 dígitos): ")),
-        "4": ("EMAIL", lambda: pedir_mail("\nIngresá el nuevo e-mail:")),
-        "5": ("APP", lambda: pedir_confirmacion("\n¿Es una reserva de aplicativo? si/no ")),
-        "6": ("CHECKIN", lambda: pedir_fecha_valida("\nIngresá la fecha de checkin (DD-MM-YYYY): ", allow_past=True)),
-        "7": ("CHECKOUT", lambda: pedir_fecha_valida("\nIngresá la nueva fecha de checkout (DD-MM-YYYY): ")),
-        "8": ("DOCUMENTO", lambda: input("\nIngresá el nuevo documento: ").strip()),
-        "9": ("HABITACION", lambda: pedir_entero("\nIngresá la nueva habitación: ", minimo=1, maximo=7)),
-        "10": ("CONTINGENTE", lambda: pedir_entero("\nIngresá la cantidad de huéspedes: ", minimo=1))
-    }
-    
-    while True:
-        opcion = input(
-            "\n¿Qué querés editar? Ingresá:\n"
-            "(1) Apellido,    (2) Nombre,      (3) Teléfono,\n"
-            "(4) Email,       (5) Booking,     (6) Checkin,\n"
-            "(7) Checkout,    (8) Documento,   (9) Habitación,\n"
-            "(10)Contingente, ó ingrese (0) para cancelar\n"
-        ).strip()
-        if opcion == "0":
-            print("Edición cancelada.")
-            break
-
-        if opcion in campos:
-            campo_sql, funcion_valor = campos[opcion]
-            valor_ingresado = funcion_valor()
-            if opcion in ("1", "2"):
-                # Primero unidecode para manejar acentos, luego re.sub para limpiar caracteres
-                valor_unidecode = unidecode(valor_ingresado)
-                valor_limpio = valor_unidecode.replace('-', ' ').replace('_', ' ')
-                nuevo_valor = re.sub(r"[^a-zA-Z0-9\s]", "", valor_limpio).lower()
-                
-                if not nuevo_valor.strip():
-                    print(f"El {'apellido' if opcion == '1' else 'nombre'} del huésped no puede contener solo caracteres especiales y signos.")
-                    continue # Volver a pedir la opción de edición
-            else:
-                # Para otros campos, usar el valor tal cual lo devuelve la función lambda (ya puede estar validado/formateado)
-                nuevo_valor = valor_ingresado
-            registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-            registro_anterior = registro_anterior_data["REGISTRO"] if registro_anterior_data and "REGISTRO" in registro_anterior_data else ""
-            separador = "\n---\n"
-            registro_actual = f"Se modificó {campo_sql} a '{nuevo_valor}' - {datetime.now().isoformat(sep=" ", timespec='seconds')}"
-            nuevo_registro = registro_anterior + separador + registro_actual
-            updates = {campo_sql: nuevo_valor, "REGISTRO": nuevo_registro}
-            try:
-                with db.transaccion():
-                    _editar_huesped_db(numero, updates)
-                print(f"✔ {campo_sql} actualizado correctamente.")
-            except ValueError as e:
-                print(f"\n{e}")
-            except Exception as e:
-                print(f"Error al actualizar {campo_sql}: {e}")
-            break
-        else:
-            print("\n❌ Opción inválida. Intente nuevamente.")
-
-    return
-
-@usuarios.requiere_acceso(2)
-def eliminar_huesped():
-    leyenda = "\nIngresá el número del huésped a eliminar, (*) para buscar ó (0) para cancelar: "
-    while True:
-        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
-        if numero == "*":
-            buscar_huesped()
-            continue
-        if numero == 0:
-            print("\n❌ Eliminación cancelada.")
-            return
-
-        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-        if huesped is None:
-            print("\n⚠️Huésped no encontrado.")
-            continue
-
-        imprimir_huesped(huesped)
-
-        confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que querés eliminar este huésped? (si/no): ")
-        if confirmacion == "si":
-            try:
-                with db.transaccion():
-                    db.ejecutar("DELETE FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-                    marca_tiempo = marca_de_tiempo()
-                    log = (
-                        f"[{marca_tiempo}] HUÉSPED ELIMINADO:\n"
-                        f"| NUMERO: {huesped['NUMERO']} | Apellido: {huesped['APELLIDO']} | "
-                        f"| Nombre: {huesped['NOMBRE']} | Teléfono: {huesped['TELEFONO']} | "
-                        f"| Email: {huesped['EMAIL']} | Booking: {huesped['APP']} | "
-                        f"| Estado: {huesped['ESTADO']} | Checkin: {huesped['CHECKIN']} | "
-                        f"| Checkout: {huesped['CHECKOUT']} | Documento: {huesped['DOCUMENTO']} | "
-                        f"| Habitación: {huesped['HABITACION']} | Contingente: {huesped['CONTINGENTE']} | "
-                        f"| Registro: {huesped['REGISTRO']}\n"
-                        f"| Acción realizada por: {usuarios.sesion.usuario}"
-                    )
-                    registrar_log("huespedes_eliminados.log", log)
-                print("\n✔ Huésped eliminado.")
-            except sqlite3.IntegrityError:
-                print("\n❌ No se puede eliminar el huésped porque tiene consumos pendientes.")
-            except Exception as e:
-                print(f"\n❌ Error al eliminar huésped: {e}")
-            return
-        else:
-            print("\n❌ Eliminación cancelada.")
-            return
-
-@usuarios.requiere_acceso(2)
-def ver_registro():
-    leyenda = "Ingresá el número de huésped para ver su historial, (*) para buscar ó (0) para cancelar: "
-    while True:
-        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
-        if numero == 0:
-            return
-        if numero == "*":
-            buscar_huesped()
-            continue
-        
-        huesped = db.obtener_uno("SELECT NOMBRE, APELLIDO, REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
-        if huesped is None:
-            print("\n❌ Huésped no encontrado.")
-            continue
-
-        nombre = huesped["NOMBRE"]
-        apellido = huesped["APELLIDO"]
-        registro = huesped["REGISTRO"]
-        print(f"\nHistorial del huésped {nombre} {apellido}:\n")
-
-        if not registro:
-            print("\n❌ Este huésped no tiene historial registrado.")
-        else:
-            entradas = registro.split("\n---\n")
-            for i, linea in enumerate(entradas, start=1):
-                print(f"{i}. {linea.strip()}\n")
-
-        return
 
 def _obtener_huesped():
     # Bucle de entrada para obtener y validar el número de huésped.
@@ -761,115 +862,170 @@ def _actualizar_a_cerrado(numero, registro_anterior, separador):
         print(f"\n❌ Error al cerrar el huésped: {e}")
         return False
 
-def _verificar_consumos_impagos(numero_huesped, registro_actual):
-    # Verifica consumos impagos para un huésped, maneja el pago y la confirmación
-    # de cierre. Retorna (True, registro_actualizado) si el checkout puede continuar, 
-    # (False, None) si se cancela el checkout.
+@usuarios.requiere_acceso(1)
+def editar_huesped():
+    leyenda = "\nIngresá el número de huésped que querés editar, (*) para buscar ó (0) para cancelar: "
+    while True:
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
+        if numero == "*":
+            buscar_huesped()
+        if numero == 0:
+            print("Edición cancelada.")
+            return
 
-    separador = "\n---\n"
-    
-    # 1. Verificar consumos impagos
-    query = """
-        SELECT C.CANTIDAD, P.PRECIO
-        FROM CONSUMOS C
-        JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO
-        WHERE C.HUESPED = ? AND C.PAGADO = 0
-    """
-    consumos_no_pagados = db.obtener_todos(query, (numero_huesped,))
-    # Calcular el total de consumos brutos (sin propina)
-    total_consumos_bruto = sum(c["CANTIDAD"] * c["PRECIO"] for c in consumos_no_pagados)
-    
-    # LÓGICA DE PROPINAS APLICADA AQUÍ
-    propina = total_consumos_bruto * 0.10
-    total_pendiente = total_consumos_bruto + propina # Este es el monto final a pagar
+        numero = int(numero)
+        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+        if huesped is None:
+            print("Huésped no encontrado.")
+            continue
 
-    if not consumos_no_pagados:
-        print("\n✔ No hay consumos pendientes de pago para esta habitación.")
-        return True, registro_actual, total_pendiente # Se devuelve el total para el log
+        imprimir_huesped(huesped)
+        break
+    campos = {
+        "1": ("APELLIDO", lambda: input("\nIngresá el nuevo apellido: ").strip()),
+        "2": ("NOMBRE", lambda: input("\nIngresá el nuevo nombre: ").strip()),
+        "3": ("TELEFONO", lambda: pedir_telefono("\nIngresá el nuevo número de WhatsApp (11 dígitos): ")),
+        "4": ("EMAIL", lambda: pedir_mail("\nIngresá el nuevo e-mail:")),
+        "5": ("APP", lambda: pedir_confirmacion("\n¿Es una reserva de aplicativo? si/no ")),
+        "6": ("CHECKIN", lambda: pedir_fecha_valida("\nIngresá la fecha de checkin (DD-MM-YYYY): ", allow_past=True)),
+        "7": ("CHECKOUT", lambda: pedir_fecha_valida("\nIngresá la nueva fecha de checkout (DD-MM-YYYY): ")),
+        "8": ("DOCUMENTO", lambda: input("\nIngresá el nuevo documento: ").strip()),
+        "9": ("HABITACION", lambda: pedir_entero("\nIngresá la nueva habitación: ", minimo=1, maximo=7)),
+        "10": ("CONTINGENTE", lambda: pedir_entero("\nIngresá la cantidad de huéspedes: ", minimo=1))
+    }
     
-    # 2. Consumos pendientes
-    print("\n=========================================")
-    print("💰 Detalle de la cuenta pendiente:")
-    print(f"   Consumos:          R {total_consumos_bruto:.2f}")
-    print(f"   Propina (10%):     R {propina:.2f}")
-    print(f"   TOTAL PENDIENTE:   R {total_pendiente:.2f}")
-    print("=========================================")
-    respuesta_pago = pedir_confirmacion("\n⚠️ ¿Querés marcar estos consumos como pagados? (si/no): ")
-    
-    if respuesta_pago == "si":
-        try:
-            with db.transaccion():
-                # Marcar consumos como pagados
-                db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero_huesped,))
+    while True:
+        opcion = input(
+            "\n¿Qué querés editar? Ingresá:\n"
+            "(1) Apellido,    (2) Nombre,      (3) Teléfono,\n"
+            "(4) Email,       (5) App,     (6) Checkin,\n"
+            "(7) Checkout,    (8) Documento,   (9) Habitación,\n"
+            "(10)Contingente, ó ingrese (0) para cancelar\n"
+        ).strip()
+        if opcion == "0":
+            print("Edición cancelada.")
+            break
+
+        if opcion in campos:
+            campo_sql, funcion_valor = campos[opcion]
+            valor_ingresado = funcion_valor()
+            if opcion in ("1", "2"):
+                # Primero unidecode para manejar acentos, luego re.sub para limpiar caracteres
+                valor_unidecode = unidecode(valor_ingresado)
+                valor_limpio = valor_unidecode.replace('-', ' ').replace('_', ' ')
+                nuevo_valor = re.sub(r"[^a-zA-Z0-9\s]", "", valor_limpio).lower()
                 
-                # Actualizar registro del huésped
-                marca_tiempo = marca_de_tiempo()
-                registro_pago = f"Se marcaron como pagados consumos e incluyó propina. Total cobrado: R {total_pendiente:.2f} (Consumos: R{total_consumos_bruto:.2f} + Propina: R{propina:.2f}) - {marca_tiempo}"
-                nuevo_registro = registro_actual + separador + registro_pago
-                _editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro})
-            
-            print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
-            return True, nuevo_registro, total_pendiente
-        
-        except ValueError as e:
-            print(f"{e}") 
-        except Exception as e:
-            print(f"\n❌ Error al marcar consumos como pagados: {e}")
-            # Se devuelve True para permitir que el checkout continúe si el error no es crítico,
-            # pero es más seguro cancelar si el pago falló.
-            print("\n❌ Cierre cancelado debido a un error de pago.")
-            return False, None, total_pendiente 
-            
+                if not nuevo_valor.strip():
+                    print(f"El {'apellido' if opcion == '1' else 'nombre'} del huésped no puede contener solo caracteres especiales y signos.")
+                    continue # Volver a pedir la opción de edición
+            else:
+                # Para otros campos, usar el valor tal cual lo devuelve la función lambda (ya puede estar validado/formateado)
+                nuevo_valor = valor_ingresado
+            registro_anterior_data = db.obtener_uno("SELECT REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+            registro_anterior = registro_anterior_data["REGISTRO"] if registro_anterior_data and "REGISTRO" in registro_anterior_data else ""
+            separador = "\n---\n"
+            registro_actual = f"Se modificó {campo_sql} a '{nuevo_valor}' - {datetime.now().isoformat(sep=" ", timespec='seconds')}"
+            nuevo_registro = registro_anterior + separador + registro_actual
+            updates = {campo_sql: nuevo_valor, "REGISTRO": nuevo_registro}
+            try:
+                with db.transaccion():
+                    _editar_huesped_db(numero, updates)
+                print(f"✔ {campo_sql} actualizado correctamente a {nuevo_valor}.")
+            except ValueError as e:
+                print(f"\n{e}")
+            except Exception as e:
+                print(f"Error al actualizar {campo_sql}: {e}")
+            break
+        else:
+            print("\n❌ Opción inválida. Intente nuevamente.")
+
+    return
+
+def ver_programados():
+    huespedes = db.obtener_todos("SELECT * FROM HUESPEDES WHERE ESTADO = 'PROGRAMADO' ORDER BY CHECKIN, CHECKOUT")
+    if huespedes:
+        print("\nListado de huéspedes:")
+        imprimir_huespedes(huespedes)
     else:
-        # Preguntar si desea cerrar aun con deuda
-        confirmar_cierre = pedir_confirmacion("\n⚠️ ¿Querés cerrar la habitación aun con consumos impagos? (si/no): ")
-        if confirmar_cierre != "si":
-            print("\n❌ Cierre cancelado.")
-            return False, None, total_pendiente
-            
-        # Registra la acción de cierre con deuda
-        marca_tiempo = marca_de_tiempo()
-        registro_impago = f"ADVERTENCIA: Habitación cerrada con deuda pendiente (Consumos + Propina) por un total de R{total_pendiente:.2f} - {marca_tiempo}"
-        nuevo_registro_con_adv = registro_actual + separador + registro_impago
-        
-        print(f"\n✅ Habitación marcada para cierre. Se ha registrado la deuda pendiente (R {total_pendiente:.2f}).")
-        
-        # Se devuelve True y el registro con la advertencia
-        return True, nuevo_registro_con_adv, total_pendiente
+        print("\n❌ No se encontraron coincidencias.")
 
-def _editar_huesped_db(numero, updates_dict):
-    # Actualiza uno o varios campos del huésped dado su número de registro.
-    # updates_dict es un diccionario con {campo: valor}.
+@usuarios.requiere_acceso(2)
+def eliminar_huesped():
+    leyenda = "\nIngresá el número del huésped a eliminar, (*) para buscar ó (0) para cancelar: "
+    while True:
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
+        if numero == "*":
+            buscar_huesped()
+            continue
+        if numero == 0:
+            print("\n❌ Eliminación cancelada.")
+            return
 
-    if not updates_dict:
-        print("\n⚠️  No hay cambios para aplicar.")
+        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+        if huesped is None:
+            print("\n⚠️Huésped no encontrado.")
+            continue
+
+        imprimir_huesped(huesped)
+
+        confirmacion = pedir_confirmacion("\n⚠️¿Está seguro que querés eliminar este huésped? (si/no): ")
+        if confirmacion == "si":
+            try:
+                with db.transaccion():
+                    db.ejecutar("DELETE FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+                    marca_tiempo = marca_de_tiempo()
+                    log = (
+                        f"[{marca_tiempo}] HUÉSPED ELIMINADO:\n"
+                        f"| NUMERO: {huesped['NUMERO']} | Apellido: {huesped['APELLIDO']} | "
+                        f"| Nombre: {huesped['NOMBRE']} | Teléfono: {huesped['TELEFONO']} | "
+                        f"| Email: {huesped['EMAIL']} | Aplicativo: {huesped['APP']} | "
+                        f"| Estado: {huesped['ESTADO']} | Checkin: {huesped['CHECKIN']} | "
+                        f"| Checkout: {huesped['CHECKOUT']} | Documento: {huesped['DOCUMENTO']} | "
+                        f"| Habitación: {huesped['HABITACION']} | Contingente: {huesped['CONTINGENTE']} | "
+                        f"| Registro: {huesped['REGISTRO']}\n"
+                        f"| Acción realizada por: {usuarios.sesion.usuario}"
+                    )
+                    registrar_log("huespedes_eliminados.log", log)
+                print("\n✔ Huésped eliminado.")
+            except sqlite3.IntegrityError:
+                print("\n❌ No se puede eliminar el huésped porque tiene consumos pendientes.")
+            except Exception as e:
+                print(f"\n❌ Error al eliminar huésped: {e}")
+            return
+        else:
+            print("\n❌ Eliminación cancelada.")
+            return
+
+@usuarios.requiere_acceso(2)
+def ver_registro():
+    leyenda = "Ingresá el número de huésped para ver su historial, (*) para buscar ó (0) para cancelar: "
+    while True:
+        numero = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1)
+        if numero == 0:
+            return
+        if numero == "*":
+            buscar_huesped()
+            continue
+        
+        huesped = db.obtener_uno("SELECT NOMBRE, APELLIDO, REGISTRO FROM HUESPEDES WHERE NUMERO = ?", (numero,))
+        if huesped is None:
+            print("\n❌ Huésped no encontrado.")
+            continue
+
+        nombre = huesped["NOMBRE"]
+        apellido = huesped["APELLIDO"]
+        registro = huesped["REGISTRO"]
+        print(f"\nHistorial del huésped {nombre} {apellido}:\n")
+
+        if not registro:
+            print("\n❌ Este huésped no tiene historial registrado.")
+        else:
+            entradas = registro.split("\n---\n")
+            for i, linea in enumerate(entradas, start=1):
+                print(f"{i}. {linea.strip()}\n")
+
         return
 
-    set_clauses = []
-    valores = []
 
 
-    for campo, valor in updates_dict.items():
-        # 1. Verifica que el nombre del campo esté en la lista blanca
-        if campo in LISTA_BLANCA_HUESPED:
-            # 2. Construye la cláusula SET con el nombre de columna filtrado
-            set_clauses.append(f"{campo} = ?")
-            # 3. Agrega el valor a la lista de parámetros (seguro)
-            valores.append(valor)
-        else:
-            # 4. (Opcional) Notifica o ignora los campos no válidos
-            print(f"⚠️  ADVERTENCIA DE SEGURIDAD: Campo '{campo}' ignorado (no permitido).")
-    
-    # Si después del filtrado no quedan campos para actualizar
-    if not set_clauses:
-        raise ValueError("⚠️  No quedaron campos válidos para actualizar.")
 
-    sql = f"UPDATE HUESPEDES SET {', '.join(set_clauses)} WHERE NUMERO = ?"
-
-    # Añadir el número del huésped al final de los valores para la cláusula WHERE
-    valores.append(numero)
-
-    try:
-        db.ejecutar(sql, tuple(valores))
-    except Exception as e:
-        print(f"\n❌ Error al actualizar el huésped en la DB: {e}")

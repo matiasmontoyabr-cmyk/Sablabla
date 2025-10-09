@@ -49,8 +49,8 @@ def imprimir_huesped(huesped):
     print("-" * 40)
 
 def imprimir_huespedes(huespedes):
-    print(f"{'NUMERO':<6} {'APELLIDO':<15} {'NOMBRE':<15} {'HAB':^5} {'ESTADO':^10} {'CON':^5} {'CHECKIN':^12} {'CHECKOUT':^12}")
-    print("-" * 85)
+    print(f"{'NUMERO':<6} {'APELLIDO':<15} {'NOMBRE':<15} {'HAB':^5} {'ESTADO':^10} {'CON':^5} {'CHECKIN':^12} {'CHECKOUT':<12} {'DESCUENTO':<18}")
+    print("-" * 106)
     for _, h in enumerate(huespedes, start=1):
         numero = h["NUMERO"]
         apellido = h["APELLIDO"]
@@ -68,8 +68,39 @@ def imprimir_huespedes(huespedes):
         # Los anchos son 15 caracteres para Apellido y Nombre
         apellido_display = (apellido_display[:12] + '...') if len(apellido_display) > 15 else apellido_display
         nombre_display = (nombre_display[:12] + '...') if len(nombre_display) > 15 else nombre_display
+        # --- Lógica para el formato amigable de DESCUENTO ---
+        descuento_valor = h.get("DESCUENTO")
+        desc_col_display = "Ninguno"
+        
+        if descuento_valor:
+            try:
+                # El formato es: LUGAR-TIPO_VALOR-VALOR_O_PCT (ej: final-pct-15)
+                lugar, tipo_val, valor_str = descuento_valor.split('-')
+                
+                # 1. Determinar el ÁMBITO (CONS o TOTAL)
+                ambito = "TOTAL" if lugar.upper() == "FINAL" else "CONS"
+                
+                # 2. Determinar el FORMATO (%, R)
+                if tipo_val.upper() == "PCT":
+                    # Es Porcentaje (ej: 15%)
+                    desc_col_display = f"{valor_str}% {ambito}"
+                elif tipo_val.upper() == "VALOR":
+                    # Es Valor Fijo (ej: 1500R)
+                    # Asegurar que el monto se muestre con dos decimales, aunque no se use el prefijo "R$"
+                    monto = float(valor_str)
+                    desc_col_display = f"R {monto:.2f} {ambito}"
+                else:
+                    # Formato desconocido/corrupto
+                    desc_col_display = descuento_valor.upper().replace('-', ' ') 
+                    
+            except ValueError:
+                # Si el split falla (formato antiguo o corrupto)
+                desc_col_display = descuento_valor.upper().replace('-', ' ')
+
+        # Truncar el descuento para la columna (18 caracteres)
+        desc_col_display = (desc_col_display[:15] + '...') if len(desc_col_display) > 18 else desc_col_display
         # Impresión
-        print(f"{numero:<6} {apellido_display:<15} {nombre_display:<15} {habitacion:^5} {estado:<10} {contingente:^5} {checkin:<12} {checkout:<12}")
+        print(f"{numero:<6} {apellido_display:<15} {nombre_display:<15} {habitacion:^5} {estado:<10} {contingente:^5} {checkin:<12} {checkout:<12} {desc_col_display:<18}")
     input("\nPresioná Enter para continuar...")
 
 def imprimir_producto(producto):
@@ -83,7 +114,8 @@ def imprimir_producto(producto):
         "PRECIO": "PRECIO",
         "STOCK": "STOCK",
         "ALERTA": "ALERTA",
-        "PINMEDIATO": "PINMEDIATO"
+        "PINMEDIATO": "PINMEDIATO",
+        "GRUPO": "GRUPO"
     }
     for col_key, col_display in columnas_a_mostrar.items():
         val = producto[col_key]
@@ -104,43 +136,96 @@ def imprimir_producto(producto):
             
         print(f"{col_display:<15}: {display_val}")
 
-def imprimir_productos(productos):
+def imprimir_productos(productos, todo=False):
     if not productos:
         print("No hay productos para mostrar.")
         return
+    if todo == False:
+        header_format = "{:<8} {:<35} {:<12} {:<8}"
+        line_separator = "-" * 70  # Ajustar longitud
 
-    header_format = "{:<8} {:<35} {:<12} {:<8}"
-    line_separator = "-" * 70  # Ajustar longitud
+        print("\nListado de Productos\n")
+        # Imprimir la cabecera de la tabla
+        print(header_format.format("CÓDIGO", "NOMBRE", "PRECIO", "STOCK"))
+        print(line_separator)
 
-    print("\nListado de Productos\n")
-    # Imprimir la cabecera de la tabla
-    print(header_format.format("CÓDIGO", "NOMBRE", "PRECIO", "STOCK"))
-    print(line_separator)
+        # Imprimir cada producto en una fila
+        for producto in productos:
+            # Asegúrate de que los datos estén en el formato correcto para la impresión
+            # Ya que db.obtener_todos devuelve una lista de diccionarios, es mejor acceder por claves
+            # para evitar errores de "too many values to unpack".
+            nombre_original = producto['NOMBRE']
+            
+            # --- CAPITALIZACIÓN Y TRUNCADO PARA IMPRESIÓN ---
+            # Asegura que el nombre no exceda los 35 caracteres definidos en el header_format
+            nombre_display = nombre_original.capitalize()
+            if len(nombre_display) > 35:
+                nombre_display = nombre_display[:32] + '...'
 
-    # Imprimir cada producto en una fila
-    for producto in productos:
-        # Asegúrate de que los datos estén en el formato correcto para la impresión
-        # Ya que db.obtener_todos devuelve una lista de diccionarios, es mejor acceder por claves
-        # para evitar errores de "too many values to unpack".
-        nombre_original = producto['NOMBRE']
+            precio_display = f"R {producto['PRECIO']:.2f}"
+            stock_display = "∞" if producto['STOCK'] == -1 else str(producto['STOCK'])
+
+            print(header_format.format(producto['CODIGO'], nombre_display, precio_display, stock_display))
+
+        print(line_separator)
+        input("\nPresioná Enter para continuar...")
+    else:
+        # CÓDIGO (8), NOMBRE (35), PRECIO (12), STOCK (8), ALERTA (10), P. INMTO. (10), GRUPO (15)
+        header_format = "{:<8} {:<35} {:<12} {:<8} {:<10} {:<10} {:<15}"
         
-        # --- CAPITALIZACIÓN Y TRUNCADO PARA IMPRESIÓN ---
-        # Asegura que el nombre no exceda los 35 caracteres definidos en el header_format
-        nombre_display = nombre_original.capitalize()
-        if len(nombre_display) > 35:
-            nombre_display = nombre_display[:32] + '...'
+        # La longitud total será la suma de los anchos de columna + espacios entre ellas (6 espacios de 1 c/u)
+        # 8+35+12+8+10+10+15 + 6 = 104
+        line_separator = "=" * 104 
 
-        precio_display = f"R {producto['PRECIO']:.2f}"
-        stock_display = "∞" if producto['STOCK'] == -1 else str(producto['STOCK'])
+        print("\nListado de Productos (Tabla Completa)\n")
+        
+        # Imprimir la cabecera de la tabla
+        print(header_format.format("CÓDIGO", "NOMBRE", "PRECIO", "STOCK", "ALERTA", "P. INMTO.", "GRUPO"))
+        print(line_separator)
 
-        print(header_format.format(producto['CODIGO'], nombre_display, precio_display, stock_display))
+        # Imprimir cada producto en una fila
+        for producto in productos:
+            nombre_original = producto['NOMBRE']
+            
+            # --- CAPITALIZACIÓN Y TRUNCADO PARA IMPRESIÓN ---
+            nombre_display = nombre_original.capitalize()
+            if len(nombre_display) > 35:
+                nombre_display = nombre_display[:32] + '...'
 
-    print(line_separator)
-    input("\nPresioná Enter para continuar...")
+            # --- Formato de valores ---
+            precio_display = f"R {producto['PRECIO']:.2f}"
+            stock_display = "∞" if producto['STOCK'] == -1 else str(producto['STOCK'])
+            alerta_display = str(producto['ALERTA'])
+            # Mostrar P. INMEDIATO como "Sí"/"No" para ahorrar espacio
+            pinmediato_display = "Sí" if producto['PINMEDIATO'] == 1 else "No" 
+            # Si GRUPO es NULL/None, mostrar N/A
+            grupo_display = producto['GRUPO'] if producto['GRUPO'] else "N/A" 
+            
+            # Truncar GRUPO si es necesario (el espacio es solo de 15)
+            if len(grupo_display) > 15:
+                grupo_display = grupo_display[:12] + '...'
 
-def pedir_fecha_valida(mensaje, allow_past=False, confirmacion=True):
+            # Imprimir la fila
+            print(header_format.format(
+                producto['CODIGO'], 
+                nombre_display, 
+                precio_display, 
+                stock_display, 
+                alerta_display, 
+                pinmediato_display, 
+                grupo_display
+            ))
+
+        print(line_separator)
+        input("\nPresioná Enter para continuar...")
+
+def pedir_fecha_valida(mensaje, allow_past=False, confirmacion=True, cero=False, vacio=False):
     while True:
         respuesta_fecha = input(mensaje).strip()
+        if respuesta_fecha == "0" and cero:
+            return None # Retorna None si el usuario cancela
+        if not respuesta_fecha and vacio:
+            return "" # Devuelve cadena vacía para que la función que llama use la fecha de hoy.
         fecha = None
         if re.fullmatch(r"\d{8}", respuesta_fecha):
             try:
@@ -174,7 +259,7 @@ def pedir_fecha_valida(mensaje, allow_past=False, confirmacion=True):
                 if allow_past:
                     if not confirmacion:
                         return fecha.isoformat()
-                    respuesta = pedir_confirmacion("\n⚠️  La fecha de check-in es anterior a hoy. ¿Desea registrarla de todas formas? (si/no): ")
+                    respuesta = pedir_confirmacion("\n⚠️  La fecha de check-in es anterior a hoy. ¿Desea registrarla de todas formas? (si/no): ")
                     if respuesta == "si":
                         return fecha.isoformat()
                     else:

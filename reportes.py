@@ -53,7 +53,6 @@ def reporte_abiertos():
         if respuesta == "si":
             print("\n⚠️  Huéspedes con checkout vencido:\n")
             imprimir_huespedes(vencidos)
-            input("\nPresione Enter para continuar...")
             return
     query = "SELECT * FROM HUESPEDES WHERE ESTADO = ? ORDER BY CAST(HABITACION AS INTEGER)"
     huespedes = db.obtener_todos(query, ("ABIERTO",))
@@ -120,7 +119,7 @@ def reporte_pronto_checkin():
         print("\n❌ No hay huéspedes con check-in programado para hoy ni para mañana.")
         return
 
-@usuarios.requiere_acceso(1)
+@usuarios.requiere_acceso(0)
 def reporte_inventario():
     """
     Muestra un reporte de productos con stock bajo (<= ALERTA),
