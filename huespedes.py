@@ -146,14 +146,13 @@ def _pedir_datos(huesped):
 
 @usuarios.requiere_acceso(1)
 def realizar_checkin():
-    # Muestra huéspedes programados para hoy y mañana
+    # Muestra huéspedes programados para hoy
     hoy = date.today().isoformat()
-    manana = (date.today() + timedelta(days=1)).isoformat()
     
-    # Busca huéspedes con estado 'PROGRAMADO' hasta mañana
+    # Busca huéspedes con estado 'PROGRAMADO' hasta hoy (incluyendo atrasados)
     programados = db.obtener_todos(
         "SELECT NUMERO, APELLIDO, NOMBRE, HABITACION, CHECKIN FROM HUESPEDES WHERE ESTADO = 'PROGRAMADO' AND CHECKIN <= ? ORDER BY APELLIDO", 
-        (manana,)
+        (hoy,)
     )
 
     if programados:
@@ -186,7 +185,14 @@ def realizar_checkin():
 
         # Buscar huésped PROGRAMADO más próximo o atrasado en esa habitación
         # Ordenamos por CHECKIN ascendente para tomar el más antiguo/próximo.
-        huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO' ORDER BY CHECKIN ASC", (habitacion,))
+        huesped = db.obtener_uno(
+            # La consulta debe:
+            # 1. Filtrar por HABITACION y ESTADO.
+            # 3. Ordenar por DATE(CHECKIN) ASC para obtener el más antiguo/atrasado.
+            "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO' AND CHECKIN <= ? ORDER BY DATE(CHECKIN) ASC",
+            (habitacion, hoy,)
+        )
+
         if not huesped:
             print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
             continue
@@ -612,8 +618,6 @@ def buscar_huesped():
                 # Si la cadena está vacía, usamos la fecha de hoy
                 if fecha_busqueda == "":
                     fecha_busqueda = date.today().isoformat()
-                else:
-                    fecha_busqueda = fecha_busqueda
 
                 # La consulta busca un huésped en esa habitación, cuya fecha de CHECKIN
                 # sea menor o igual a la fecha de búsqueda, y cuya fecha de CHECKOUT
