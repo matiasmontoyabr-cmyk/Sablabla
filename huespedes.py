@@ -1,7 +1,7 @@
 import re
 import sqlite3
 import usuarios
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from db import db
 from unidecode import unidecode
 from utiles import HABITACIONES, registrar_log, imprimir_huesped, imprimir_huespedes, pedir_fecha_valida, pedir_entero, pedir_telefono, pedir_confirmacion, pedir_mail, habitacion_ocupada, marca_de_tiempo, pedir_habitación, opcion_menu, pedir_nombre, formatear_fecha, parse_fecha_a_datetime
@@ -155,26 +155,12 @@ def realizar_checkin():
         (hoy,)
     )
 
-    if programados:
-        programados_atrasados = [h for h in programados if h['CHECKIN'] < hoy]
-        programados_ok = [h for h in programados if h['CHECKIN'] >= hoy]
-        if programados_atrasados:
-                print("\n🕰️  Huéspedes programados con CHECK-IN ATRASADO:")
-                print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN PROG':<15}")
-                print("-" * 70)
-                for h in programados_atrasados:
-                    print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
-                print("-" * 70)
-        if programados_ok:
-            print("\n🗓️  Huéspedes programados (ordenados por apellido):")
-            print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN':<15}")
-            print("-" * 70)
-            for h in programados_ok:
-                print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
-            print("-" * 70)
-    else:
-        print("\n⚠️  No hay huéspedes programados para el checkin.")
+    if not programados:
+        print("\n⚠️  No hay huéspedes programados para el checkin.")
         return
+
+    # 1. MOSTRAR LISTADO (Delegado)
+    _mostrar_programados(programados, hoy)
 
     leyenda = "\nIngresá el número de habitación para hacer checkin ó (0) para cancelar: "
     while True:
@@ -183,21 +169,18 @@ def realizar_checkin():
             print("\n❌ Checkin cancelado.")
             return
 
-        # Buscar huésped PROGRAMADO más próximo o atrasado en esa habitación
+        # 2. BUSCAR HUÉSPED PROGRAMADO (Lógica Original)
         # Ordenamos por CHECKIN ascendente para tomar el más antiguo/próximo.
         huesped = db.obtener_uno(
-            # La consulta debe:
-            # 1. Filtrar por HABITACION y ESTADO.
-            # 3. Ordenar por DATE(CHECKIN) ASC para obtener el más antiguo/atrasado.
             "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO' AND CHECKIN <= ? ORDER BY DATE(CHECKIN) ASC",
             (habitacion, hoy,)
         )
 
         if not huesped:
-            print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
+            print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
             continue
 
-        # Manejar la fecha real del Check-in (Integración de la nueva lógica)
+        # 3. MANEJO DE FECHA REAL (Lógica Original)
         checkin_programado = huesped["CHECKIN"]
         checkin_definitivo = date.today().isoformat() # Por defecto, la fecha de hoy
 
@@ -205,7 +188,7 @@ def realizar_checkin():
         if checkin_programado < checkin_definitivo:
             imprimir_huesped(huesped)
             
-            # Llama a la función que maneja la interacción y la validación del rango de fechas
+            # Asegúrate que '_pedir_fecha_checkin_real' está disponible
             fecha_auxiliar = _pedir_fecha_checkin_real(checkin_programado)
             
             if fecha_auxiliar:
@@ -214,60 +197,109 @@ def realizar_checkin():
                 # Si se cancela la selección de fecha, se vuelve a preguntar por habitación.
                 continue 
 
-        numero = huesped["NUMERO"]
-        imprimir_huesped(huesped)
+        # 4. PROCESAR CHECK-IN Y ACTUALIZAR (Delegado)
+        if _procesar_checkin_y_actualizar(huesped, checkin_definitivo, checkin_programado):
+            return # Termina la función después de un check-in exitoso.
+        
+        # Si la actualización falló (_procesar_checkin_y_actualizar devolvió False),
+        # la función simplemente termina o continúa el bucle, dependiendo de cómo maneje
+        # _procesar_checkin_y_actualizar los errores internos. Como ya pusimos el 'return'
+        # dentro de la función auxiliar en caso de cancelación/éxito, aseguramos que
+        # un fallo de DB dentro de la auxiliar termine la ejecución principal.
+        
+        # Si por alguna razón la actualización falla pero queremos seguir pidiendo habitaciones:
+        # continue 
+        
+        # En este caso, si la función auxiliar devuelve False, asumimos que se debe salir:
+        return
 
-        # Luego de previsualizar el huesped pide confirmación
-        if not pedir_confirmacion("\n¿Confirmás que querés realizar el checkin (si/no): ") == "si":
-            print("\n❌ Checkin cancelado por el usuario.")
-            return
+def _mostrar_programados(programados, hoy):
+    """
+    Toma la lista de huéspedes programados y los imprime, dividiendo
+    entre atrasados y en fecha.
+    """
+    programados_atrasados = [h for h in programados if h['CHECKIN'] < hoy]
+    programados_ok = [h for h in programados if h['CHECKIN'] >= hoy]
+    
+    if programados_atrasados:
+        print("\n🕰️  Huéspedes programados con CHECK-IN ATRASADO:")
+        print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN PROG':<15}")
+        print("-" * 70)
+        for h in programados_atrasados:
+            # Asegúrate que 'formatear_fecha' está disponible
+            print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
+        print("-" * 70)
         
-        # --- Recolección de datos y actualización (Lógica correcta) ---
-        datos_recopilados = _pedir_datos(huesped)
+    if programados_ok:
+        print("\n🗓️  Huéspedes programados (ordenados por apellido):")
+        print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN':<15}")
+        print("-" * 70)
+        for h in programados_ok:
+            print(f"{h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20} {h['HABITACION']:<5} {formatear_fecha(h['CHECKIN']):<15}")
+        print("-" * 70)
+
+def _procesar_checkin_y_actualizar(huesped, checkin_definitivo, checkin_programado):
+    """
+    Realiza la recolección de datos, la actualización de la BD y el logging.
+    Aísla toda la lógica de escritura.
+    """
+    numero = huesped["NUMERO"]
+    
+    # Previsualización y confirmación (se mantiene aquí por contexto inmediato)
+    imprimir_huesped(huesped)
+    if not pedir_confirmacion("\n¿Confirmás que querés realizar el checkin (si/no): ") == "si":
+        print("\n❌ Checkin cancelado por el usuario.")
+        return False
+    
+    # --- Recolección de datos y actualización (Lógica correcta) ---
+    # Asegúrate que '_pedir_datos' está disponible
+    datos_recopilados = _pedir_datos(huesped)
+    
+    registro_anterior = str(huesped["REGISTRO"] or "")
+    separador = "\n---\n"
+    
+    # Creación del registro (Lógica original)
+    if checkin_definitivo != checkin_programado:
+        registro_checkin = (
+            f"CHECK-IN REALIZADO (Fecha programada: {formatear_fecha(checkin_programado)} - Fecha definitiva: {formatear_fecha(checkin_definitivo)}) "
+            f"- Estado cambiado a ABIERTO - {marca_de_tiempo()}"
+        )
+    else:
+        registro_checkin = f"CHECK-IN REALIZADO - Estado cambiado a ABIERTO - {marca_de_tiempo()}" 
+    
+    nuevo_registro = registro_anterior + separador + registro_checkin if registro_anterior.strip() else registro_checkin
+
+    updates = {
+        "ESTADO": "ABIERTO",
+        "CHECKIN": checkin_definitivo, 
+        "REGISTRO": nuevo_registro
+    }
+    updates.update(datos_recopilados)
+
+    try:
+        # La transacción es CRÍTICA
+        with db.transaccion():
+            # Asegúrate que '_editar_huesped_db' está disponible
+            _editar_huesped_db(numero, updates)
+        print(f"\n✔ Checkin realizado para {huesped['APELLIDO'].title()} {huesped['NOMBRE'].title()} en la habitación {huesped['HABITACION']}.")
         
-        registro_anterior = str(huesped["REGISTRO"] or "")
-        separador = "\n---\n"
-        
-        # Creación del registro
+        # Log de auditoría
+        log = (
+            f"[{marca_de_tiempo()}] CHECK-IN REALIZADO:\n"
+            f"Huésped: {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()} (Nro: {numero})\n"
+            f"Habitación: {huesped['HABITACION']} | Fecha definitiva: {checkin_definitivo}\n"
+            f"Acción realizada por: {usuarios.sesion.usuario}" 
+        )
         if checkin_definitivo != checkin_programado:
-            registro_checkin = (
-                f"CHECK-IN REALIZADO (Fecha programada: {formatear_fecha(checkin_programado)} - Fecha definitiva: {formatear_fecha(checkin_definitivo)}) "
-                f"- Estado cambiado a ABIERTO - {marca_de_tiempo()}"
-            )
-        else:
-            registro_checkin = f"CHECK-IN REALIZADO - Estado cambiado a ABIERTO - {marca_de_tiempo()}" 
+            log = f"Fecha programada: {checkin_programado}\n" + log
+            
+        registrar_log("checkins.log", log) 
         
-        nuevo_registro = registro_anterior + separador + registro_checkin if registro_anterior.strip() else registro_checkin
-
-        updates = {
-            "ESTADO": "ABIERTO",
-            "CHECKIN": checkin_definitivo, # Se usa la fecha determinada/elegida
-            "REGISTRO": nuevo_registro
-        }
-        updates.update(datos_recopilados)
-
-        try:
-            with db.transaccion():
-                _editar_huesped_db(numero, updates)
-            print(f"\n✔ Checkin realizado para {huesped['APELLIDO'].title()} {huesped['NOMBRE'].title()} en la habitación {huesped['HABITACION']}.")
-            
-            # Log de auditoría
-            log = (
-                f"[{marca_de_tiempo()}] CHECK-IN REALIZADO:\n"
-                f"Huésped: {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()} (Nro: {numero})\n"
-                f"Habitación: {huesped['HABITACION']} | Fecha definitiva: {checkin_definitivo}\n"
-                f"Acción realizada por: {usuarios.sesion.usuario}" 
-            )
-            # Puedes simplificar la adición de la fecha programada al log así:
-            if checkin_definitivo != checkin_programado:
-                log = f"Fecha programada: {checkin_programado}\n" + log
-                
-            registrar_log("checkins.log", log) 
-            
-            return # Termina la función
-        except Exception as e:
-            print(f"\n❌ Error al actualizar la base de datos: {e}")
-            return
+        return True # Indica éxito
+        
+    except Exception as e:
+        print(f"\n❌ Error al actualizar la base de datos: {e}")
+        return False # Indica fallo
 
 def _pedir_fecha_checkin_real(fecha_programada):
     """
@@ -413,10 +445,8 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
     Retorna (True, registro_actualizado, total_final) si el checkout puede continuar, 
     (False, None, total_final) si se cancela el checkout.
     """
-    separador = "\n---\n"
     
-    # 0. OBTENER INFORMACIÓN DEL HUÉSPED (Necesario para el descuento)
-    # Asumo que la tabla HUESPEDES tiene la columna DESCUENTO
+    # 0. OBTENER INFORMACIÓN DEL HUÉSPED
     huesped = db.obtener_uno("SELECT * FROM HUESPEDES WHERE NUMERO = ?", (numero_huesped,))
     if not huesped:
         print(f"❌ Error: No se encontró el huésped con número {numero_huesped}.")
@@ -439,8 +469,27 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
         # Se devuelve True, el registro actual y un total final de 0.00
         return True, registro_actual, 0.00
 
-    # 2. --- LÓGICA DE CÁLCULO DE TOTAL FINAL CON DESCUENTO ---
+    # 2. CALCULAR, MOSTRAR TOTALES Y DESCUENTOS (Delegado)
+    total_pendiente, propina, grand_subtotal, dcto_log = _calcular_y_mostrar_totales(huesped, grand_subtotal)
     
+    # 3. MANEJAR PAGO, CONFIRMACIÓN Y REGISTRO (Delegado)
+    checkout_ok, nuevo_registro_actual = _manejar_pago_y_registro(
+        numero_huesped, 
+        registro_actual, 
+        total_pendiente, 
+        grand_subtotal, 
+        propina, 
+        dcto_log
+    )
+    
+    # 4. DEVOLVER EL RESULTADO FINAL
+    return checkout_ok, nuevo_registro_actual, total_pendiente
+
+def _calcular_y_mostrar_totales(huesped, grand_subtotal):
+    """
+    Calcula los descuentos, la propina y el total pendiente, y lo imprime.
+    Retorna (total_pendiente, propina, grand_subtotal, dcto_log).
+    """
     LINE_WIDTH = 84
     LABEL_WIDTH = 69
     VALUE_FORMAT_WIDTH = 12 
@@ -452,9 +501,6 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
     dcto_log = ""
     
     print("\n" + "=" * LINE_WIDTH)
-
-    # TOTAL DE CONSUMOS (BRUTOS)
-    # Se usa la misma alineación que en _imprimir_total()
     print(f"{'TOTAL DE CONSUMOS (Bruto):':<{LABEL_WIDTH}} R$ {grand_subtotal:>{VALUE_FORMAT_WIDTH}.2f}")
 
     # --- LÓGICA DE DESCUENTOS ---
@@ -475,7 +521,8 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
                     dcto_log += f"Descuento Consumos: R${valor:.2f} "
 
             if monto_dcto_consumos > 0:
-                print(f"{dcto_descripcion:<{LABEL_WIDTH}} R$ {-monto_dcto_consumos:>{VALUE_FORMAT_WIDTH}.2f}") 
+                monto_negativo_dcto_consumos = -1 * monto_dcto_consumos
+                print(f"{dcto_descripcion:<{LABEL_WIDTH}} R$ {monto_negativo_dcto_consumos:>{VALUE_FORMAT_WIDTH}.2f}") 
                 print("-" * LINE_WIDTH)
         
         except (IndexError, ValueError):
@@ -487,7 +534,6 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
     # --- CÁLCULO DE SUBTOTAL Y PROPINA ---
     subtotal_descontado = grand_subtotal - monto_dcto_consumos
     
-    # Imprimir el Subtotal SÓLO si hubo un descuento sobre consumos
     if monto_dcto_consumos > 0:
         print(f"{'SUBTOTAL:':<{LABEL_WIDTH}} R$ {subtotal_descontado:>{VALUE_FORMAT_WIDTH}.2f}")
     
@@ -496,15 +542,13 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
 
     total_con_propina = subtotal_descontado + propina
     
-    # Lógica de impresión SUBTOTAL + PROPINA (solo si aplica descuento final)
     if descuento_str and lugar == 'final':
         print("-" * LINE_WIDTH)
         print(f"{'SUBTOTAL + PROPINA:':<{LABEL_WIDTH}} R$ {total_con_propina:>{VALUE_FORMAT_WIDTH}.2f}")
 
     # --- DESCUENTO FINAL (Si aplica) ---
     if descuento_str and lugar == 'final':
-        dcto_descripcion_final = ""
-        
+        # Se asume que 'tipo' y 'valor' están definidos si 'lugar' es 'final'
         if tipo == 'pct':
             monto_dcto_final = total_con_propina * (valor / 100.0)
             dcto_descripcion_final = f"DESCUENTO ({valor}%)"
@@ -516,17 +560,23 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
             dcto_log += f"Descuento Final: R${valor:.2f} "
         
         if monto_dcto_final > 0:
-            monto_negativo = -1 * float(monto_dcto_final)
-            print(f"{dcto_descripcion_final:<{LABEL_WIDTH}} R$ {monto_negativo:>{VALUE_FORMAT_WIDTH}.2f}")
+            monto_negativo_dcto_final = -1 * float(monto_dcto_final)
+            print(f"{dcto_descripcion_final:<{LABEL_WIDTH}} R$ {monto_negativo_dcto_final:>{VALUE_FORMAT_WIDTH}.2f}")
 
     # --- TOTAL FINAL PENDIENTE ---
     total_pendiente = total_con_propina - monto_dcto_final
     print("=" * LINE_WIDTH)
-    
     print(f"{'TOTAL PENDIENTE:':<{LABEL_WIDTH}} R$ {total_pendiente:>{VALUE_FORMAT_WIDTH}.2f}")
     print("=" * LINE_WIDTH)
     
-    # 4. Continuar con la lógica de pago
+    return total_pendiente, propina, grand_subtotal, dcto_log
+
+def _manejar_pago_y_registro(numero_huesped, registro_actual, total_pendiente, grand_subtotal, propina, dcto_log):
+    """
+    Maneja la interacción con el usuario para el pago y actualiza la BD.
+    Retorna (True/False, registro_final).
+    """
+    separador = "\n---\n"
     
     respuesta_pago = pedir_confirmacion("\n⚠️ ¿Querés marcar estos consumos como pagados? (si/no): ")
     
@@ -536,41 +586,38 @@ def _verificar_consumos_impagos(numero_huesped, registro_actual):
                 # Marcar consumos como pagados
                 db.ejecutar("UPDATE CONSUMOS SET PAGADO = 1 WHERE HUESPED = ? AND PAGADO = 0", (numero_huesped,))
                 
-                # Actualizar registro del huésped
-                marca_tiempo = marca_de_tiempo()
+                # Actualizar registro del huésped (registro de pago)
                 registro_pago = (
                     f"Se marcaron como pagados consumos e incluyó propina. {dcto_log}"
                     f"Total cobrado: R{total_pendiente:.2f} "
                     f"(Consumos Bruto: R{grand_subtotal:.2f}; Propina: R{propina:.2f}). "
-                    f"- {marca_tiempo}"
+                    f"- {marca_de_tiempo()}"
                 )
                 nuevo_registro = registro_actual + separador + registro_pago
                 _editar_huesped_db(numero_huesped, {"REGISTRO": nuevo_registro}) 
             
             print("\n✔ Todos los consumos pendientes fueron marcados como pagados.")
-            return True, nuevo_registro, total_pendiente
+            return True, nuevo_registro
         
         except Exception as e:
             print(f"\n❌ Error al marcar consumos como pagados: {e}")
             print("\n❌ Cierre cancelado debido a un error de pago.")
-            return False, None, total_pendiente 
+            return False, None 
             
     else:
         # Preguntar si desea cerrar aun con deuda
         confirmar_cierre = pedir_confirmacion("\n⚠️ ¿Querés cerrar la habitación con consumos impagos? (si/no): ")
         if confirmar_cierre != "si":
             print("\n❌ Cierre cancelado.")
-            return False, None, total_pendiente
+            return False, None
             
         # Registra la acción de cierre con deuda
-        marca_tiempo = marca_de_tiempo()
-        registro_impago = f"ADVERTENCIA: Habitación cerrada con deuda pendiente (Total Final: R{total_pendiente:.2f}). {dcto_log} - {marca_tiempo}"
+        registro_impago = f"ADVERTENCIA: Habitación cerrada con deuda pendiente (Total Final: R{total_pendiente:.2f}). {dcto_log} - {marca_de_tiempo()}"
         nuevo_registro_con_adv = registro_actual + separador + registro_impago
         
         print(f"\n✅ Habitación marcada para cierre. Se ha registrado la deuda pendiente (R {total_pendiente:.2f}).")
         
-        # Se devuelve True y el registro con la advertencia
-        return True, nuevo_registro_con_adv, total_pendiente
+        return True, nuevo_registro_con_adv
 
 @usuarios.requiere_acceso(1)
 def buscar_huesped():
@@ -580,7 +627,7 @@ def buscar_huesped():
         3: ("NUMERO", lambda: input("Ingresá el número de huesped: ").strip()),
         4: ("HABITACION", lambda: input("Ingresá el número de habitación: ").strip()),
         5: ("DOCUMENTO", lambda: input("Ingresá el número de documento: ").strip()),
-        6: ("*", None)  # Ver todos
+        6: ("*", None)  # Ver todos
     }
 
     leyenda = "\n¿Cómo querés buscar al huesped?\n1. Por apellido\n2. Por nombre\n3. Por número de huesped\n4. Por número de habitación\n5. Por documento\n6. Imprimir todos\n0. Cancelar\n"
@@ -594,46 +641,38 @@ def buscar_huesped():
             campo, get_valor = opciones[opcion]
             huesped = None
             huespedes = None
+            fecha_busqueda = None
+            input_ok = True # Flag para la validación de input
 
             if campo == "HABITACION":
                 num_habitacion = get_valor()
                 if not num_habitacion:
-                    print("\n⚠️  El número de habitación no puede estar vacío.")
+                    print("\n⚠️  El número de habitación no puede estar vacío.")
                     continue
+                # Delegamos la lógica compleja de HABITACION
+                huesped, fecha_busqueda = _buscar_por_habitacion_y_fecha(db, num_habitacion)
+                if huesped is None and fecha_busqueda is None: # Cancelación
+                    return 
+            
+            elif campo == "*":
+                huespedes = db.obtener_todos("SELECT * FROM HUESPEDES ORDER BY LOWER(APELLIDO), LOWER(NOMBRE)")
                 
-                # Pedir la fecha para verificar la estadía
-                print("\n📅 Ahora ingresá la fecha para verificar la ocupación.")
-                fecha_busqueda = pedir_fecha_valida(
-                    "Ingresá la fecha para verificar ocupación ó (0) para cancelar: ", 
-                    allow_past=True, # Permitir buscar en fechas pasadas
-                    confirmacion=False, # No preguntar si es fecha pasada, solo obtenerla
-                    cero=True, # Permite cancelar con '0'
-                    vacio = True
-                )
-                if fecha_busqueda is None:
-                    # El usuario ingresó '0'
-                    print("\n❌ Búsqueda cancelada.")
-                    return
-
-                # Si la cadena está vacía, usamos la fecha de hoy
-                if fecha_busqueda == "":
-                    fecha_busqueda = date.today().isoformat()
-
-                # La consulta busca un huésped en esa habitación, cuya fecha de CHECKIN
-                # sea menor o igual a la fecha de búsqueda, y cuya fecha de CHECKOUT
-                # sea mayor o igual a la fecha de búsqueda O sea 'NULL' (todavía abierto).
-                query = """
-                    SELECT * FROM HUESPEDES 
-                    WHERE HABITACION = ? 
-                      AND CHECKIN <= ? 
-                      AND (CHECKOUT >= ? OR ESTADO = 'ABIERTO') 
-                      AND ESTADO != 'CERRADO'
-                    ORDER BY CHECKIN DESC
-                    LIMIT 1
-                """
-                # Usamos la misma fecha de búsqueda dos veces para el rango
-                huesped = db.obtener_uno(query, (num_habitacion, fecha_busqueda, fecha_busqueda))
-                
+            elif campo in ("APELLIDO", "NOMBRE"):
+                # Delegamos la lógica de búsqueda por texto
+                huespedes = _buscar_por_nombre_o_apellido(db, campo, get_valor)
+                if huespedes is None: # Cancelación
+                    return 
+            
+            else: # NUMERO o DOCUMENTO
+                # Delegamos la lógica de búsqueda exacta
+                input_ok, huesped = _buscar_por_exacto(db, campo, get_valor)
+                if not input_ok:
+                    continue # Vuelve a pedir la opción si el input falló
+            
+            # --- Lógica de Impresión de Resultados ---
+            
+            # Caso de búsqueda por HABITACION (ya que sale inmediatamente después)
+            if campo == "HABITACION":
                 if huesped:
                     print(f"\n✔ Huésped encontrado en la habitación {num_habitacion} el {formatear_fecha(fecha_busqueda)}.")
                     imprimir_huesped(huesped)
@@ -641,34 +680,7 @@ def buscar_huesped():
                     print(f"\n❌ La habitación {num_habitacion} no estaba ocupada el {formatear_fecha(fecha_busqueda)}.")
                 return # Terminamos la función ya que es una búsqueda específica
 
-            if campo == "*":
-                huespedes = db.obtener_todos("SELECT * FROM HUESPEDES ORDER BY LOWER(APELLIDO), LOWER(NOMBRE)")
-            elif campo in ("APELLIDO", "NOMBRE"):
-                # Búsqueda por texto (Apellido o Nombre) - LÓGICA UNIFICADA
-                valor_normalizado = get_valor()
-                if valor_normalizado is None:  # Si el usuario canceló
-                    return
-                # 1. Búsqueda en SQL: Traer un subconjunto usando LIKE (más rápido)
-                # Se usa el valor normalizado para la búsqueda LIKE
-                query = f"SELECT * FROM HUESPEDES WHERE LOWER({campo}) LIKE ?"
-                # Añadimos '%' para búsqueda parcial. LOWER() asegura insensibilidad a mayúsculas.
-                patron_sql = f"%{valor_normalizado}%"
-                # Obtenemos los huéspedes que *probablemente* coinciden
-                huespedes_amplio = db.obtener_todos(query, (patron_sql,))
-                # 2. Filtrado final en Python: Asegurar coincidencia de tildes (máxima precisión)
-                huespedes = [
-                    h for h in huespedes_amplio
-                    # Comparamos: valor_normalizado IN (unidecode del valor en BD)
-                    if valor_normalizado in unidecode(h[campo]).lower()
-                ]
-            else: 
-                valor_raw = get_valor()
-                if not valor_raw:
-                    print("\n⚠️  El valor de búsqueda no puede estar vacío.")
-                    continue
-                query = f"SELECT * FROM HUESPEDES WHERE {campo} = ?"
-                huesped = db.obtener_uno(query, (valor_raw,))
-                
+            # Casos de búsqueda que devuelven listas o un solo resultado
             if huespedes:
                 print("\nListado de huéspedes:")
                 imprimir_huespedes(huespedes)
@@ -676,10 +688,80 @@ def buscar_huesped():
                 imprimir_huesped(huesped)
             else:
                 print("\n❌ No se encontraron coincidencias.")
-            break
+            
+            break # Sale del while True después de mostrar el resultado
+            
         else:
-            print("\n⚠️  Opción inválida. Intente nuevamente.")
+            print("\n⚠️  Opción inválida. Intente nuevamente.")
     return
+
+def _buscar_por_habitacion_y_fecha(num_habitacion):
+    """Maneja la lógica de búsqueda compleja por HABITACION y FECHA."""
+    
+    # Pedir la fecha para verificar la estadía (manteniendo la lógica original)
+    print("\n📅 Ahora ingresá la fecha para verificar la ocupación.")
+    # NOTA: Debes asegurar que las funciones 'pedir_fecha_valida', 'formatear_fecha', etc.,
+    # estén accesibles en tu entorno.
+    fecha_busqueda = pedir_fecha_valida(
+        "Ingresá la fecha para verificar ocupación ó (0) para cancelar: ", 
+        allow_past=True, # Permitir buscar en fechas pasadas
+        confirmacion=False, # No preguntar si es fecha pasada, solo obtenerla
+        cero=True, # Permite cancelar con '0'
+        vacio = True
+    )
+    
+    if fecha_busqueda is None:
+        # El usuario ingresó '0'
+        print("\n❌ Búsqueda cancelada.")
+        return None, None # Devuelve (huésped, fecha)
+
+    # Si la cadena está vacía, usamos la fecha de hoy
+    if fecha_busqueda == "":
+        fecha_busqueda = date.today().isoformat()
+
+    # La consulta original (con la única mejora de seguridad de usar DATE()
+    # que es crítica para esta operación de rango)
+    query = """
+        SELECT * FROM HUESPEDES 
+        WHERE HABITACION = ? 
+          AND DATE(CHECKIN) <= DATE(?) 
+          AND (DATE(CHECKOUT) >= DATE(?) OR ESTADO = 'ABIERTO') 
+          AND ESTADO != 'CERRADO'
+        ORDER BY CHECKIN DESC
+        LIMIT 1
+    """
+    
+    huesped = db.obtener_uno(query, (num_habitacion, fecha_busqueda, fecha_busqueda))
+    return huesped, fecha_busqueda
+
+def _buscar_por_nombre_o_apellido(campo, get_valor):
+    """Maneja la lógica de búsqueda por texto (LIKE + unidecode)."""
+    # NOTA: La función 'unidecode' debe estar disponible.
+    valor_normalizado = get_valor()
+    if valor_normalizado is None: # Si el usuario canceló
+        return None
+        
+    # 1. Búsqueda en SQL: Traer un subconjunto usando LIKE
+    query = f"SELECT * FROM HUESPEDES WHERE LOWER({campo}) LIKE ?"
+    patron_sql = f"%{valor_normalizado}%"
+    huespedes_amplio = db.obtener_todos(query, (patron_sql,))
+    
+    # 2. Filtrado final en Python: Asegurar coincidencia de tildes
+    huespedes = [
+        h for h in huespedes_amplio
+        if valor_normalizado in unidecode(h[campo]).lower()
+    ]
+    return huespedes
+
+def _buscar_por_exacto(campo, get_valor):
+    """Maneja la lógica de búsqueda exacta por NUMERO o DOCUMENTO."""
+    valor_raw = get_valor()
+    if not valor_raw:
+        print("\n⚠️  El valor de búsqueda no puede estar vacío.")
+        return False, None # Indica error en el input, no en la BD
+
+    query = f"SELECT * FROM HUESPEDES WHERE {campo} = ?"
+    return True, db.obtener_uno(query, (valor_raw,)) # Devuelve (éxito_input, huésped)
 
 @usuarios.requiere_acceso(1)
 def cambiar_estado():

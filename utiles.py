@@ -222,56 +222,96 @@ def imprimir_productos(productos, todo=False):
 def pedir_fecha_valida(mensaje, allow_past=False, confirmacion=True, cero=False, vacio=False):
     while True:
         respuesta_fecha = input(mensaje).strip()
+        
+        # 1. Manejo de Input y Salida Temprana
         if respuesta_fecha == "0" and cero:
-            return None # Retorna None si el usuario cancela
+            return None 
         if not respuesta_fecha and vacio:
-            return "" # Devuelve cadena vacía para que la función que llama use la fecha de hoy.
-        fecha = None
-        if re.fullmatch(r"\d{8}", respuesta_fecha):
-            try:
-                dia = int(respuesta_fecha[0:2])
-                mes = int(respuesta_fecha[2:4])
-                anio = int(respuesta_fecha[4:8])
-                fecha = date(anio, mes, dia)
-            except ValueError:
-                pass
+            return "" 
+            
+        # 2. Procesamiento y Normalización del Formato (Delegado)
+        fecha, error_msg = _procesar_formato_fecha(respuesta_fecha)
+
         if fecha is None:
-            fecha_input = re.sub(r"[^\d-]", "-", respuesta_fecha)
-            try:
-                partes = fecha_input.split("-")
-                partes = [p for p in partes if p]
-                if len(partes) != 3:
-                    raise ValueError("\n❌ Número incorrecto de partes en la fecha.")
-                dia, mes, anio = map(int, partes)
-                if anio < 100:
-                    # Asume que cualquier año de dos dígitos (ej: 25) es del siglo 21 (2025)
-                    # Esto es seguro para un sistema de reservas moderno.
-                    anio += 2000
-                fecha = date(anio, mes, dia)
-            except ValueError as e:
-                print(f"\n❌ Formato de fecha inválido o fecha no existente: {e}. Ingresá una fecha como 07-05-2025 o 07052025.")
-                continue
-            except Exception as e:
-                print(f"\n❌ Ocurrió un error inesperado al procesar la fecha: {e}. Intente de nuevo.")
-                continue
-        if fecha:
-            if fecha < date.today():
-                if allow_past:
-                    if not confirmacion:
-                        return fecha.isoformat()
-                    respuesta = pedir_confirmacion("\n⚠️  La fecha de check-in es anterior a hoy. ¿Desea registrarla de todas formas? (si/no): ")
-                    if respuesta == "si":
-                        return fecha.isoformat()
-                    else:
-                        continue
-                else:
-                    print("\n❌La fecha debe ser igual o posterior a hoy.")
-                    continue
-            else:
-                return fecha.isoformat()
-        else:
-            print("❌No se pudo interpretar la fecha. Ingresá una fecha como 07-05-2025 o 07052025.")
+            # Si hubo un error en el formato, lo imprime y repite
+            print(f"\n❌ {error_msg}")
             continue
+            
+        # 3. Lógica de Validación y Confirmación de Fechas (Delegado)
+        fecha_iso = _validar_y_confirmar_fecha(fecha, allow_past, confirmacion)
+
+        if fecha_iso is not None:
+            # La fecha fue validada y confirmada (o no necesitó confirmación)
+            return fecha_iso
+        else:
+            # La validación/confirmación obligó a repetir (ej: "no" a fecha pasada)
+            continue
+
+def _procesar_formato_fecha(respuesta_fecha):
+    """
+    Intenta convertir una cadena de fecha en un objeto date, manejando 
+    los formatos 'DDMMAAAA' y 'DD-MM-AAAA' (o similar).
+    Retorna (objeto date, mensaje de error)
+    """
+    fecha = None
+
+    # Intento 1: Formato DDMMAAAA (8 dígitos)
+    if re.fullmatch(r"\d{8}", respuesta_fecha):
+        try:
+            dia = int(respuesta_fecha[0:2])
+            mes = int(respuesta_fecha[2:4])
+            anio = int(respuesta_fecha[4:8])
+            fecha = date(anio, mes, dia)
+            return fecha, None
+        except ValueError:
+            pass # Continúa al siguiente intento
+            
+    # Intento 2: Formato con separadores (DD-MM-AAAA)
+    fecha_input = re.sub(r"[^\d-]", "-", respuesta_fecha)
+    try:
+        partes = fecha_input.split("-")
+        partes = [p for p in partes if p]
+        if len(partes) != 3:
+            raise ValueError("Número incorrecto de partes en la fecha.")
+        
+        dia, mes, anio = map(int, partes)
+        
+        if anio < 100:
+            anio += 2000
+            
+        fecha = date(anio, mes, dia)
+        return fecha, None
+        
+    except ValueError as e:
+        return None, f"Formato de fecha inválido o fecha no existente: {e}. Ingresá una fecha como 07-05-2025 o 07052025."
+    except Exception as e:
+        return None, f"Ocurrió un error inesperado al procesar la fecha: {e}. Intente de nuevo."
+
+    return None, "No se pudo interpretar la fecha. Ingresá una fecha como 07-05-2025 o 07052025."
+
+def _validar_y_confirmar_fecha(fecha, allow_past, confirmacion):
+    """
+    Valida si la fecha está en el pasado/futuro y gestiona la confirmación.
+    Retorna (str isoformat) si es válida y confirmada, o None para repetir.
+    """
+    if fecha < date.today():
+        if allow_past:
+            if not confirmacion:
+                return fecha.isoformat()
+            
+            # Asegúrate que 'pedir_confirmacion' está disponible
+            respuesta = pedir_confirmacion("\n⚠️  La fecha de check-in es anterior a hoy. ¿Desea registrarla de todas formas? (si/no): ")
+            
+            if respuesta == "si":
+                return fecha.isoformat()
+            else:
+                return None # Repetir loop
+        else:
+            print("\n❌ La fecha debe ser igual o posterior a hoy.")
+            return None # Repetir loop
+    else:
+        # Futuro o Hoy -> Siempre válido
+        return fecha.isoformat()
 
 def formatear_fecha(fecha_iso):
     """
