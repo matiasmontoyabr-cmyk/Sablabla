@@ -655,7 +655,40 @@ def buscar_huesped():
                     return
             
             elif campo == "*":
-                huespedes = db.obtener_todos("SELECT * FROM HUESPEDES ORDER BY LOWER(APELLIDO), LOWER(NOMBRE)")
+                huespedes = db.obtener_todos("""
+                    SELECT *
+                    FROM HUESPEDES
+                    ORDER BY
+                        -- 1. PRIORIDAD PRINCIPAL: Ordena los grupos de estado (1=ABIERTO, 2=PROGRAMADO, 3=CERRADO)
+                        CASE ESTADO
+                            WHEN 'ABIERTO' THEN 1
+                            WHEN 'PROGRAMADO' THEN 2
+                            WHEN 'CERRADO' THEN 3
+                            ELSE 4
+                        END,
+
+                        -- 2. CRITERIO PARA ABIERTOS: Ordena por HABITACION (asumo que es un número o texto ordenable)
+                        CASE ESTADO
+                            WHEN 'ABIERTO' THEN HABITACION
+                            ELSE NULL 
+                        END,
+
+                        -- 3. CRITERIO PARA PROGRAMADOS: Ordena por CHECKIN (tratado como fecha con DATE())
+                        CASE ESTADO
+                            WHEN 'PROGRAMADO' THEN DATE(CHECKIN)
+                            ELSE NULL 
+                        END,
+
+                        -- 4. CRITERIO PARA CERRADOS: Ordena por CHECKOUT (tratado como fecha con DATE())
+                        CASE ESTADO
+                            WHEN 'CERRADO' THEN DATE(CHECKOUT)
+                            ELSE NULL 
+                        END DESC,
+
+                        -- 5. CRITERIOS SECUNDARIOS FINALES: Desempate por apellido y nombre
+                        LOWER(APELLIDO),
+                        LOWER(NOMBRE)
+                """)
                 
             elif campo in ("APELLIDO", "NOMBRE"):
                 # Delegamos la lógica de búsqueda por texto
