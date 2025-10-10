@@ -1,5 +1,8 @@
 #TODO: Análisis de archivos y errores .br@gmail
 
+#Con ocupación llena, se tiene que poder intercambiar las habitaciones de los huéspedes
+
+
 
 #Que permita cancelar al pedir la fecha y demás.
 
@@ -20,7 +23,7 @@ import sqlite3
 import traceback
 from consumos import agregar_consumo, ver_consumos, eliminar_consumos, registrar_pago, consumo_cortesia, asignar_descuento
 from db import db
-from huespedes import nuevo_huesped, realizar_checkout, buscar_huesped, ver_registro, cambiar_estado, editar_huesped, eliminar_huesped, realizar_checkin, ver_programados
+from huespedes import nuevo_huesped, realizar_checkout, buscar_huesped, ver_registro, cambiar_estado, editar_huesped, eliminar_huesped, realizar_checkin, ver_programados, intercambiar_habitacion
 from inventario import abrir_inventario, ingresar_compra, editar_inventario
 from productos import nuevo_producto, buscar_producto, listado_productos, editar_producto, eliminar_producto
 from reportes import reporte_diario, reporte_abiertos, reporte_cerrados, reporte_pronto_checkin, reporte_inventario, reporte_ocupacion, ver_logs
@@ -127,9 +130,9 @@ def inicio():
             gestionar_usuarios()
 
 def gestionar_huespedes():
-    leyenda = "\nGestión de huéspedes:\n1.➕ Registrar nuevo huesped\n2.✅ Realizar checkin\n3.🚪 Realizar checkout\n4.🔍 Buscar un huesped\n5.✏️ Editar huesped\n6.📆 Ver programados\n7. ⭾ Cambiar el estado de un huesped\n8.🗑️ Eliminar un huesped\n9.㏒ Ver registro\n0. ⮐ Volver al inicio\n"
+    leyenda = "\nGestión de huéspedes:\n1.➕ Registrar nuevo huesped\n2.✅ Realizar checkin\n3.🚪 Realizar checkout\n4.🔍 Buscar un huesped\n5.✏️ Editar huesped\n6.📆 Ver programados\n7. ⭾ Cambiar el estado de un huesped\n8.🗑️ Eliminar un huesped\n9.⇆ Intergambiar habitación\n10.㏒ Ver registro\n0. ⮐ Volver al inicio\n"
     while True:
-        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=8)
+        respuesta = opcion_menu(leyenda, cero=True, minimo=1, maximo=10)
         if respuesta == 1:
             nuevo_huesped()
             return
@@ -148,6 +151,8 @@ def gestionar_huespedes():
         elif respuesta == 8:
             eliminar_huesped()
         elif respuesta == 9:
+            intercambiar_habitacion()
+        elif respuesta == 10:
             ver_registro()
         elif respuesta == 0:
             return
@@ -244,7 +249,7 @@ def gestionar_usuarios():
 ### PROGRAMA ###
 
 try:
-    print("Bienvenido al sistema de gestión de la posada Onda de mar 2.5 by MatCodePro")
+    print("Bienvenido al sistema de gestión de la posada Onda de mar 2.6 by MatCodePro")
     usuarios_existe()
     productos_existe()
     huespedes_existe()

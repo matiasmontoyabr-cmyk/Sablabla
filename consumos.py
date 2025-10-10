@@ -197,204 +197,143 @@ def _guardar_consumos_en_db(consumos, huesped):
 
 @usuarios.requiere_acceso(1)
 def ver_consumos():
-    leyenda_hab = "\nIngresá el número de habitación para ver sus consumos, (*) para buscar ó (0) para cancelar: "
+    """
+    Muestra los consumos de una habitación.
+    Por defecto solo muestra los NO PAGOS, y si hay pagos, ofrece mostrarlos.
+    """
+
+    # --- PROCESO PRINCIPAL ---
+    leyenda = "\nIngresá el número de habitación para ver sus consumos, (*) para buscar ó (0) para cancelar: "
     while True:
-        # 1. MANEJO DE INPUT DE HABITACIÓN
-        habitacion = opcion_menu(leyenda_hab, cero=True, asterisco=True, minimo=1, maximo=7)
+        habitacion = opcion_menu(leyenda, cero=True, asterisco=True, minimo=1, maximo=7)
         if habitacion == 0:
             return
         if habitacion == "*":
             buscar_huesped()
             continue
 
-        # 2. BÚSQUEDA SECUENCIAL (Delegado)
-        huesped, estado_encontrado = _buscar_huesped_por_habitacion(habitacion)
-        
-        if huesped is None:
-            print("❌ Habitación libre o no se encontró ninguna reserva activa/programada.")
+        huesped, estado = _obtener_huesped(habitacion)
+        if not huesped:
+            print("❌ Habitación libre o sin reservas activas ni programadas.")
             continue
-        
-        if estado_encontrado == 'PROGRAMADO':
-            # Si se encontró una reserva futura, se informa y se vuelve a pedir la habitación.
-            print(f"❌ La habitación {habitacion} está reservada para {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}, pero todavía NO HIZO CHECK-IN.")
-            continue
-            
-        # El resto de la función (consumos) continúa SOLO si estado_encontrado es 'ABIERTO'.
-
-        # OBTENER FECHA DE CHECKIN
-        checkin_date_str = huesped.get("CHECKIN") 
-        if not checkin_date_str:
-            print("❌ Error: No se encontró la fecha de Check-in para esta estadía.")
+        if estado == "PROGRAMADO":
+            print(f"❌ La habitación {habitacion} está reservada para {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}, pero todavía no hizo checkin.")
             continue
 
-        # 3. PREGUNTAR OPCIÓN DE VISUALIZACIÓN
-        opcion_mostrar = opcion_menu("\n¿Querés ver todos los consumos (1) o sólo los no pagos (2)? : ", minimo=1, maximo=2)
-        mostrar_solo_impagos = (opcion_mostrar == 2)
+        # Mostrar solo no pagos
+        consumos_no_pagos = _obtener_consumos(huesped, incluir_pagos=False)
+        consumos_todos = _obtener_consumos(huesped, incluir_pagos=True)
+        consumos_pagos = [c for c in consumos_todos if c["PAGADO"] == 1]
 
-        # 4. OBTENER Y PREPARAR CONSUMOS (Delegado)
-        consumos_a_imprimir, consumos_por_dia = _obtener_y_preparar_consumos(
-            huesped["NUMERO"], 
-            checkin_date_str, 
-            mostrar_solo_impagos
-        )
-
-        if not consumos_a_imprimir:
-            mensaje = "no pagos" if mostrar_solo_impagos else "registrados en la estadía actual"
-            print(f"\nEsta habitación no tiene consumos {mensaje}.")
+        if not consumos_no_pagos and not consumos_pagos:
+            print("\nEsta habitación no tiene consumos registrados.")
             return
 
-        # 5. IMPRIMIR Y RESUMEN FINAL (Delegado)
-        _imprimir_consumos_y_resumen(huesped, consumos_a_imprimir, consumos_por_dia, mostrar_solo_impagos)
+        if not consumos_no_pagos:
+            if pedir_confirmacion("Todos los consumos de esta estadía fueron pagados. ¿Querés verlos igualmente? (si/no): ") == "si":
+                agrupados = _preparar_consumos(consumos_pagos)
+                print(f"\nHistorial de consumos PAGADOS de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
+                _imprimir_consumos(huesped, agrupados, incluir_columna_pagado=True)
+            return
 
-        return # Termina la función después de mostrar los resultados
+        # Mostrar NO PAGOS
+        print(f"\nHistorial de consumos NO PAGOS de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
+        agrupados = _preparar_consumos(consumos_no_pagos)
+        total_impagos = _imprimir_consumos(huesped, agrupados)
 
-def _buscar_huesped_por_habitacion(habitacion):
-    """
-    Busca al huésped en la habitación, priorizando estado 'ABIERTO', 
-    luego 'PROGRAMADO'.
-    Retorna (huesped, estado_encontrado) o (None, None).
-    """
-    # 1. Búsqueda prioritaria: Estado ABIERTO (huésped actual)
-    huesped = db.obtener_uno(
-        "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", 
-        (habitacion,)
-    )
-    
-    if huesped:
-        return huesped, 'ABIERTO'
+        if total_impagos > 0:
+            _imprimir_total(huesped, total_impagos)
+        else:
+            print("\n" + "=" * 84)
+            print(f"{'TOTAL PENDIENTE: R$ 0.00. No hay cargos impagos para calcular propina/descuentos.':<84}")
+            print("=" * 84)
 
-    # 2. Si no se encuentra ABIERTO, buscar PROGRAMADO (reserva futura)
-    huesped = db.obtener_uno(
-        "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO' ORDER BY DATE(CHECKIN) ASC", 
-        (habitacion,)
-    )
-    
-    if huesped:
-        return huesped, 'PROGRAMADO'
+        # Si hay pagos, ofrecer mostrarlos
+        if consumos_pagos:
+            if pedir_confirmacion("\n💰 Hay consumos ya pagos. ¿Querés verlos también? (si/no): ") == "si":
+                agrupados_pagos = _preparar_consumos(consumos_pagos)
+                print(f"\nHistorial de consumos PAGADOS de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
+                _imprimir_consumos(huesped, agrupados_pagos, incluir_columna_pagado=True)
+        return
 
-    return None, None
+def _obtener_huesped(habitacion):
+        # Busca huésped ABIERTO o PROGRAMADO
+        huesped = db.obtener_uno(
+            "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", 
+            (habitacion,)
+        )
+        if huesped:
+            return huesped, "ABIERTO"
+        huesped = db.obtener_uno(
+            "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO' ORDER BY DATE(CHECKIN) ASC", 
+            (habitacion,)
+        )
+        return (huesped, "PROGRAMADO") if huesped else (None, None)
 
-def _obtener_y_preparar_consumos(huesped_numero, checkin_date_str, mostrar_solo_impagos):
-    """
-    Consulta la BD, filtra los consumos y los prepara para la impresión 
-    (calculando totales de ítem, extrayendo fecha/hora).
-    Retorna (consumos_a_imprimir, consumos_por_dia).
-    """
+def _obtener_consumos(huesped, incluir_pagos=False):
     query = """
         SELECT C.ID, C.FECHA, C.PRODUCTO, P.NOMBRE, C.CANTIDAD, P.PRECIO, C.PAGADO 
         FROM CONSUMOS C 
         JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO 
-        WHERE C.HUESPED = ? 
-        AND C.FECHA >= ?
+        WHERE C.HUESPED = ? AND C.FECHA >= ?
     """
-
-    params = [huesped_numero, checkin_date_str]
-
-    if mostrar_solo_impagos:
+    params = [huesped["NUMERO"], huesped["CHECKIN"]]
+    if not incluir_pagos:
         query += " AND C.PAGADO = 0"
-    
     query += " ORDER BY C.FECHA ASC"
+    return db.obtener_todos(query, tuple(params))
 
-    consumos = db.obtener_todos(query, tuple(params))
-    
-    if not consumos:
-        return [], {}
-
-    consumos_por_dia = {}
-    consumos_a_imprimir = []
-
-    for consumo in consumos:
-        dt = parse_fecha_a_datetime(consumo["FECHA"])
+def _preparar_consumos(consumos):
+    agrupados = {}
+    for c in consumos:
+        dt = parse_fecha_a_datetime(c["FECHA"])
         if not dt:
             continue
-        
-        consumo["ITEM_TOTAL"] = consumo["CANTIDAD"] * consumo["PRECIO"]
-        
-        fecha_solo_dia = dt.date().isoformat()
-        hora_solo = dt.strftime("%H:%M") if dt.time() != datetime.min.time() else ""
-        consumo["HORA_SOLO"] = hora_solo
+        c["ITEM_TOTAL"] = c["CANTIDAD"] * c["PRECIO"]
+        c["FECHA_SOLO"] = dt.date().isoformat()
+        c["HORA_SOLO"] = dt.strftime("%H:%M") if dt.time() != datetime.min.time() else ""
+        agrupados.setdefault(c["FECHA_SOLO"], []).append(c)
+    return agrupados
 
-        consumos_a_imprimir.append(consumo)
-        
-        if fecha_solo_dia not in consumos_por_dia:
-            consumos_por_dia[fecha_solo_dia] = []
-        consumos_por_dia[fecha_solo_dia].append(consumo)
-        
-    return consumos_a_imprimir, consumos_por_dia
-
-def _imprimir_consumos_y_resumen(huesped, consumos_a_imprimir, consumos_por_dia, mostrar_solo_impagos):
-    """
-    Imprime los consumos agrupados por día, calcula los subtotales, 
-    e imprime el resumen de pago.
-    """
-    print(f"\nHistorial de consumos de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
-    
-    grand_subtotal = 0.0 # Acumula el total de los consumos *mostrados*
-    
-    # Configuración de encabezados y anchos
-    if not mostrar_solo_impagos:
+def _imprimir_consumos(huesped, consumos_agrupados, incluir_columna_pagado=False):
+    if incluir_columna_pagado:
         print(f"{'#':<3} {'HORA':<15} {'PRODUCTO':<28} {'CANTIDAD':<6} {'P.UNIT':>10} {'P.TOTAL':>12} {'PAGADO':>5}")
         print("-" * 88)
-        producto_ancho = 28
-        linea_ancho = 88
     else:
         print(f"{'#':<3} {'HORA':<15} {'PRODUCTO':<30} {'CANTIDAD':<6} {'P.UNIT':>10} {'P.TOTAL':>12}")
         print("-" * 84)
-        producto_ancho = 30
-        linea_ancho = 84
 
-    indice_general = 1
+    indice = 1
+    total_general = 0.0
 
-    for fecha_dia in sorted(consumos_por_dia.keys()):
-        consumos_del_dia = consumos_por_dia[fecha_dia]
-        subtotal_diario = 0.0
-        
-        # Imprimir el separador de día
-        fecha_formateada = formatear_fecha(fecha_dia)
-        separador_len = linea_ancho - len(fecha_formateada) - 13
-        print(f"\n--- FECHA: {fecha_formateada} " + "-" * separador_len)
+    for fecha_dia in sorted(consumos_agrupados.keys()):
+        consumos_dia = consumos_agrupados[fecha_dia]
+        subtotal = 0.0
+        fecha_fmt = formatear_fecha(fecha_dia)
+        separador = 85 - len(fecha_fmt) - 13 + (4 if incluir_columna_pagado else 0)
+        print(f"\n--- FECHA: {fecha_fmt} " + "-" * separador)
 
-        for consumo in consumos_del_dia:
-            hora_solo = consumo["HORA_SOLO"]
-            producto_nombre = consumo["NOMBRE"].title()
-            cantidad = consumo["CANTIDAD"]
-            precio = consumo["PRECIO"]
-            item_total = consumo["ITEM_TOTAL"]
-            pagado_status = "SI" if consumo.get("PAGADO") == 1 else "NO"
-            
-            subtotal_diario += item_total
-            
-            # Truncar el nombre del producto
-            if len(producto_nombre) > producto_ancho:
-                producto_nombre = producto_nombre[:producto_ancho - 3] + '...'
-            
-            # Formato de impresión
-            if not mostrar_solo_impagos:
-                print(f"{indice_general:<3} {hora_solo:<15} {producto_nombre:<{producto_ancho}} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f} {pagado_status:>5}")
+        for c in consumos_dia:
+            prod = c["NOMBRE"].title()
+            if len(prod) > (28 if incluir_columna_pagado else 30):
+                prod = prod[:(25 if incluir_columna_pagado else 27)] + '...'
+
+            subtotal += c["ITEM_TOTAL"]
+
+            if incluir_columna_pagado:
+                pagado = "SI" if c["PAGADO"] else "NO"
+                print(f"{indice:<3} {c['HORA_SOLO']:<15} {prod:<28} {c['CANTIDAD']:<6} {c['PRECIO']:>10.2f} {c['ITEM_TOTAL']:>12.2f} {pagado:>5}")
             else:
-                print(f"{indice_general:<3} {hora_solo:<15} {producto_nombre:<{producto_ancho}} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f}")
-            
-            indice_general += 1
-        
-        # Imprimir el subtotal diario
-        print("-" * linea_ancho)
-        label_ancho = linea_ancho - 16 # Ancho para alinear el label del subtotal
-        print(f"{'SUBTOTAL DIARIO:':<{label_ancho}} {subtotal_diario:>12.2f}")
-        print("=" * linea_ancho)
+                print(f"{indice:<3} {c['HORA_SOLO']:<15} {prod:<30} {c['CANTIDAD']:<6} {c['PRECIO']:>10.2f} {c['ITEM_TOTAL']:>12.2f}")
+            indice += 1
 
-        grand_subtotal += subtotal_diario
+        ancho = 88 if incluir_columna_pagado else 84
+        print("-" * ancho)
+        print(f"{'SUBTOTAL DIARIO:':<{ancho - 16}} {subtotal:>12.2f}")
+        print("=" * ancho)
+        total_general += subtotal
 
-    # 4. Impresión del Total a Pagar (solo cargos impagos)
-    total_a_pagar_base = sum(c["ITEM_TOTAL"] for c in consumos_a_imprimir if c["PAGADO"] == 0)
-
-    if total_a_pagar_base > 0:
-        # Asegúrate que '_imprimir_total' está disponible
-        _imprimir_total(huesped, total_a_pagar_base)
-    else:
-        ANCHO = 84
-        print("\n" + "=" * ANCHO)
-        print(f"{'TOTAL PENDIENTE: R$ 0.00. No hay cargos impagos para calcular propina/descuentos.':<{ANCHO}}")
-        print("=" * ANCHO)
+    return total_general
 
 def _imprimir_total(huesped, grand_subtotal):
     """
@@ -762,6 +701,7 @@ def asignar_descuento():
             if tipo_val == "pct":
                 descuento_display = f"{valor_str}% {lugar_display}"
             else: # tipo_val == "valor"
+                # Usamos float(valor_str) para asegurar un formato limpio en el display
                 descuento_display = f"R$ {float(valor_str):.2f} {lugar_display}"
             
             print(f"Descuento actual: {descuento_display}")
@@ -772,9 +712,9 @@ def asignar_descuento():
     print("-----------------------------")
 
     # 1. RECOLECCIÓN DE PARÁMETROS (Delegado)
-    tipo_str, tipo_valor_str, valor_numerico, valor_guardado, valor_display = _recolectar_parametros_descuento()
+    lugar_str, tipo_str, valor_numerico, valor_guardado, valor_display = _recolectar_parametros_descuento()
 
-    if tipo_str is None: # Si se canceló la operación en la recolección
+    if lugar_str is None: # Si se canceló la operación en la recolección
         print("\n❌ Operación cancelada."); return
     
     # 2. CONSTRUCCIÓN DEL VALOR DE GUARDADO Y LOG (Lógica Original)
@@ -783,9 +723,9 @@ def asignar_descuento():
     
     if valor_numerico > 0: 
         # Formato de guardado: LUGAR-TIPO_VALOR-VALOR_O_PCT
-        nuevo_valor_descuento = f"{tipo_str}-{tipo_valor_str}-{valor_guardado}"
+        nuevo_valor_descuento = f"{lugar_str}-{tipo_str}-{valor_guardado}"
         
-        lugar_log = "sobre consumos" if tipo_str == "consumos" else "sobre el total final"
+        lugar_log = "sobre consumos" if lugar_str == "consumos" else "sobre el total"
         # valor_display ya tiene el % o R$
         log_string = f"Se asignó un descuento de {valor_display} {lugar_log}" 
     else:
@@ -802,13 +742,13 @@ def _recolectar_parametros_descuento():
     o (None, None, None, None, None) si se cancela.
     """
     # 1. Preguntar por el lugar de aplicación
-    leyenda_lugar = "\n¿Dónde se aplica el descuento?\n1. Sobre el total de consumos\n2. Sobre el total final\n0. Cancelar\n"
+    leyenda_lugar = "\n¿Dónde se aplica el descuento?\n1. Sobre los consumos\n2. Sobre el total\n0. Cancelar\n"
     opcion_lugar = opcion_menu(leyenda_lugar, cero=True, minimo=1, maximo=2)
 
     if opcion_lugar == 0:
         return None, None, None, None, None
     
-    tipo_str = "consumos" if opcion_lugar == 1 else "final"
+    lugar_str = "consumos" if opcion_lugar == 1 else "final"
 
     # 2. Preguntar por el tipo de valor (Porcentaje o Valor Fijo)
     leyenda_tipo = "\n¿Cómo es el descuento?\n1. Porcentaje (%)\n2. Valor Fijo (R$)\n0. Cancelar\n"
@@ -817,25 +757,23 @@ def _recolectar_parametros_descuento():
     if opcion_tipo == 0:
         return None, None, None, None, None
     
-    tipo_valor_str = "pct" if opcion_tipo == 1 else "valor"
+    tipo_str = "pct" if opcion_tipo == 1 else "valor"
 
     # 3. Preguntar por el valor y formatearlo
     valor_numerico = 0.0
     valor_display = ""
     valor_guardado = ""
     
-    if tipo_valor_str == "pct":
-        # Asegúrate que 'pedir_entero' esté disponible
+    if tipo_str == "pct":
         valor_numerico = pedir_entero("Ingresá el porcentaje de descuento (0 para quitar): ", minimo=0, maximo=100)
         valor_display = f"{valor_numerico}%"
-        valor_guardado = str(valor_numerico)
+        valor_guardado = str(valor_numerico) # Se guarda como cadena (ej: "15")
     else: # tipo_valor_str == "valor"
-        # Asegúrate que 'pedir_precio' esté disponible
         valor_numerico = pedir_precio("Ingresá el valor fijo del descuento (R$ 0.00 para quitar): ") 
         valor_display = f"R$ {valor_numerico:.2f}"
         valor_guardado = f"{valor_numerico:.2f}"
         
-    return tipo_str, tipo_valor_str, valor_numerico, valor_guardado, valor_display
+    return lugar_str, tipo_str, valor_numerico, valor_guardado, valor_display
 
 def _ejecutar_actualizacion_descuento(numero_huesped, nuevo_valor_descuento, log_string):
     """
@@ -852,7 +790,6 @@ def _ejecutar_actualizacion_descuento(numero_huesped, nuevo_valor_descuento, log
     updates["REGISTRO"] = (registro_anterior + "\n---\n" + registro_descuento) if registro_anterior.strip() else registro_descuento
 
     try:
-        # Asumiendo que _editar_huesped_db está disponible
         with db.transaccion():
             _editar_huesped_db(numero_huesped, updates) 
         print("\n✔ Operación de descuento realizada correctamente.")
@@ -1018,3 +955,195 @@ def _guardar_y_registrar_cortesias(cortesias, autoriza):
 
     except Exception as e:
         print(f"\n❌ Hubo un error al registrar la cortesía y fue cancelado: {e}")
+
+""" def ver_consumos():
+    leyenda_hab = "\nIngresá el número de habitación para ver sus consumos, (*) para buscar ó (0) para cancelar: "
+    while True:
+        habitacion = opcion_menu(leyenda_hab, cero=True, asterisco=True, minimo=1, maximo=7)
+        if habitacion == 0:
+            return
+        if habitacion == "*":
+            buscar_huesped()
+            continue
+
+        # --- LÓGICA DE BÚSQUEDA SECUENCIAL (ABIERTO > PROGRAMADO) ---
+
+        # 1. Búsqueda prioritaria: Estado ABIERTO (huésped actual)
+        huesped = db.obtener_uno(
+            "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", 
+            (habitacion,)
+        )
+        
+        estado_encontrado = 'ABIERTO' # Asumimos que es abierto al inicio
+
+        # 2. Si no se encuentra ABIERTO, buscar PROGRAMADO (reserva futura)
+        if huesped is None:
+            # Selecciona la reserva PROGRAMADA más antigua/próxima
+            huesped = db.obtener_uno(
+                "SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'PROGRAMADO' ORDER BY DATE(CHECKIN) ASC", 
+                (habitacion,)
+            )
+            estado_encontrado = 'PROGRAMADO'
+
+        # 3. Manejo de resultados (Ninguno encontrado)
+        if huesped is None:
+            print("❌ Habitación libre o no se encontró ninguna reserva activa/programada.")
+            continue
+        
+        # 4. Manejo de resultados (Programado encontrado)
+        if estado_encontrado == 'PROGRAMADO':
+            # Si se encontró una reserva futura, se informa y se vuelve a pedir la habitación.
+            print(f"❌ La habitación {habitacion} está reservada para {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}, pero todavía NO HIZO CHECK-IN.")
+            continue
+            
+        # El resto de la función (consumos) continúa SOLO si estado_encontrado es 'ABIERTO'.
+
+        # OBTENER FECHA DE CHECKIN
+        checkin_date_str = huesped.get("CHECKIN") 
+        if not checkin_date_str:
+            print("❌ Error: No se encontró la fecha de Check-in para esta estadía.")
+            continue
+
+        # 1. PREGUNTAR AL USUARIO QUÉ CONSUMOS DESEA VER
+        opcion_mostrar = opcion_menu("\n¿Querés ver todos los consumos (1) o sólo los no pagos (2)? : ", minimo=1, maximo=2)
+        
+        mostrar_solo_impagos = (opcion_mostrar == 2)
+
+        # 2. CONSTRUIR LA QUERY: Filtrar por HUESPED y CHECKIN
+        query = 
+            SELECT C.ID, C.FECHA, C.PRODUCTO, P.NOMBRE, C.CANTIDAD, P.PRECIO, C.PAGADO 
+            FROM CONSUMOS C 
+            JOIN PRODUCTOS P ON C.PRODUCTO = P.CODIGO 
+            WHERE C.HUESPED = ? 
+            AND C.FECHA >= ?
+        
+
+        params = [huesped["NUMERO"], checkin_date_str]
+
+        # Añadir filtro de PAGADO si la opción es 2
+        if mostrar_solo_impagos:
+            query += " AND C.PAGADO = 0"
+        
+        query += " ORDER BY C.FECHA ASC"
+
+        consumos = db.obtener_todos(query, tuple(params))
+
+        if not consumos:
+            mensaje = "no pagos" if mostrar_solo_impagos else "registrados en la estadía actual"
+            print(f"\nEsta habitación no tiene consumos {mensaje}.")
+            return
+
+        print(f"\nHistorial de consumos de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
+        
+        # Diccionario para agrupar consumos por fecha (YYYY-MM-DD)
+        consumos_por_dia = {}
+        
+        # Filtrar y preparar consumos para impresión
+        # Guardaremos los consumos finales a imprimir y calcular el subtotal.
+        consumos_a_imprimir = []
+
+        for consumo in consumos:
+            dt = parse_fecha_a_datetime(consumo["FECHA"])
+            if not dt:
+                continue
+            
+            # Calcular el total por ítem
+            consumo["ITEM_TOTAL"] = consumo["CANTIDAD"] * consumo["PRECIO"]
+            
+            # Formato de fechas/horas
+            fecha_solo_dia = dt.date().isoformat()
+            hora_solo = dt.strftime("%H:%M") if dt.time() != datetime.min.time() else ""
+            consumo["FECHA_SOLO"] = fecha_solo_dia
+            consumo["HORA_SOLO"] = hora_solo
+
+            consumos_a_imprimir.append(consumo)
+            
+            if fecha_solo_dia not in consumos_por_dia:
+                consumos_por_dia[fecha_solo_dia] = []
+            consumos_por_dia[fecha_solo_dia].append(consumo)
+
+        # 3. Imprimir los consumos agrupados
+        # El grand_subtotal ahora SOLO incluye los consumos que se están mostrando.
+        grand_subtotal = 0.0 
+        
+        # Encabezado de la tabla
+        # Se añade una columna para indicar si está pagado o no, si se muestran TODOS.
+        if not mostrar_solo_impagos:
+            print(f"{'#':<3} {'HORA':<15} {'PRODUCTO':<28} {'CANTIDAD':<6} {'P.UNIT':>10} {'P.TOTAL':>12} {'PAGADO':>5}")
+            print("-" * 88) # Línea de 88 (84 + 4)
+        else:
+            print(f"{'#':<3} {'HORA':<15} {'PRODUCTO':<30} {'CANTIDAD':<6} {'P.UNIT':>10} {'P.TOTAL':>12}")
+            print("-" * 84) 
+        
+        indice_general = 1
+
+        for fecha_dia in sorted(consumos_por_dia.keys()):
+            consumos_del_dia = consumos_por_dia[fecha_dia]
+            subtotal_diario = 0.0
+            
+            # Imprimir el separador de día
+            fecha_formateada = formatear_fecha(fecha_dia)
+            separador_len = 85 - len(fecha_formateada) - 13
+            # Ajustar separador si se muestra la columna PAGADO
+            if not mostrar_solo_impagos:
+                separador_len += 4 # 4 chars extra de la nueva columna
+            print(f"\n--- FECHA: {fecha_formateada} " + "-" * separador_len)
+
+            for consumo in consumos_del_dia:
+                hora_solo = consumo["HORA_SOLO"]
+                producto_nombre = consumo["NOMBRE"].title()
+                cantidad = consumo["CANTIDAD"]
+                precio = consumo["PRECIO"]
+                item_total = consumo["ITEM_TOTAL"]
+                pagado_status = "SI" if consumo.get("PAGADO") == 1 else "NO"
+                
+                subtotal_diario += item_total # El subtotal diario siempre suma todo lo mostrado
+
+                if len(producto_nombre) > 28 and not mostrar_solo_impagos: # 28 si hay columna PAGADO
+                    producto_nombre = producto_nombre[:25] + '...'
+                elif len(producto_nombre) > 30 and mostrar_solo_impagos:
+                    producto_nombre = producto_nombre[:27] + '...'
+                
+                # Formato de impresión
+                if not mostrar_solo_impagos:
+                    # Ancho total 88
+                    print(f"{indice_general:<3} {hora_solo:<15} {producto_nombre:<28} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f} {pagado_status:>5}")
+                else:
+                    # Ancho total 84
+                    print(f"{indice_general:<3} {hora_solo:<15} {producto_nombre:<30} {cantidad:<6} {precio:>10.2f} {item_total:>12.2f}")
+                
+                indice_general += 1
+            
+            # Imprimir el subtotal diario
+            if not mostrar_solo_impagos:
+                print("-" * 88)
+                print(f"{'SUBTOTAL DIARIO:':<72} {subtotal_diario:>12.2f}") # 72 + 16 = 88
+                print("=" * 88)
+            else:
+                print("-" * 84)
+                print(f"{'SUBTOTAL DIARIO:':<68} {subtotal_diario:>12.2f}")
+                print("=" * 84)
+
+
+            grand_subtotal += subtotal_diario
+
+        # 4. Impresión del Total de Consumos, Propina y Total Final.
+        # El total a pagar debe calcularse SÓLO sobre los consumos NO PAGADOS de la estadía actual.
+        
+        # Calcular el total para _imprimir_total() solo con consumos NO PAGADOS
+        total_a_pagar_base = sum(c["ITEM_TOTAL"] for c in consumos_a_imprimir if c["PAGADO"] == 0)
+
+        # Si el usuario eligió ver SÓLO impagos, grand_subtotal ya es igual a total_a_pagar_base.
+        # Si eligió ver TODOS, debemos usar total_a_pagar_base.
+        
+        if total_a_pagar_base > 0:
+             _imprimir_total(huesped, total_a_pagar_base)
+        else:
+             # Usar ANCHO_TOTAL_LINEA = 84 para alinear con los totales base
+             ANCHO = 84
+             print("\n" + "=" * ANCHO)
+             # El mensaje debe tener el mismo ancho total de impresión de totales
+             print(f"{'TOTAL PENDIENTE: R$ 0.00. No hay cargos impagos para calcular propina/descuentos.':<{ANCHO}}")
+             print("=" * ANCHO)
+
+        return"""

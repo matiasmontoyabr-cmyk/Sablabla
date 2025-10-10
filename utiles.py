@@ -262,7 +262,7 @@ def _procesar_formato_fecha(respuesta_fecha):
             mes = int(respuesta_fecha[2:4])
             anio = int(respuesta_fecha[4:8])
             fecha = date(anio, mes, dia)
-            return fecha, None
+            return fecha, None #Devuelve la Fecha, y el mensaje de error vacío
         except ValueError:
             pass # Continúa al siguiente intento
             
@@ -280,14 +280,14 @@ def _procesar_formato_fecha(respuesta_fecha):
             anio += 2000
             
         fecha = date(anio, mes, dia)
-        return fecha, None
+        return fecha, None #Devuelve la fecha y el mensaje de error vacío
         
     except ValueError as e:
+        # Devuelve la fecha vacía y el mensaje de error
         return None, f"Formato de fecha inválido o fecha no existente: {e}. Ingresá una fecha como 07-05-2025 o 07052025."
     except Exception as e:
+        # Devuelve la fecha vacía y el mensaje de error
         return None, f"Ocurrió un error inesperado al procesar la fecha: {e}. Intente de nuevo."
-
-    return None, "No se pudo interpretar la fecha. Ingresá una fecha como 07-05-2025 o 07052025."
 
 def _validar_y_confirmar_fecha(fecha, allow_past, confirmacion):
     """
@@ -299,8 +299,7 @@ def _validar_y_confirmar_fecha(fecha, allow_past, confirmacion):
             if not confirmacion:
                 return fecha.isoformat()
             
-            # Asegúrate que 'pedir_confirmacion' está disponible
-            respuesta = pedir_confirmacion("\n⚠️  La fecha de check-in es anterior a hoy. ¿Desea registrarla de todas formas? (si/no): ")
+            respuesta = pedir_confirmacion("\n⚠️  La fecha de check-in es anterior a hoy. ¿Desea registrarla de todas formas? (si/no): ")
             
             if respuesta == "si":
                 return fecha.isoformat()

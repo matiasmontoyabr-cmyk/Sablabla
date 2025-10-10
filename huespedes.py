@@ -156,7 +156,7 @@ def realizar_checkin():
     )
 
     if not programados:
-        print("\n⚠️  No hay huéspedes programados para el checkin.")
+        print("\n⚠️  No hay huéspedes programados para el checkin.")
         return
 
     # 1. MOSTRAR LISTADO (Delegado)
@@ -177,7 +177,7 @@ def realizar_checkin():
         )
 
         if not huesped:
-            print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
+            print(f"\n⚠️  No hay huésped programado en la habitación {habitacion}.")
             continue
 
         # 3. MANEJO DE FECHA REAL (Lógica Original)
@@ -222,7 +222,7 @@ def _mostrar_programados(programados, hoy):
     programados_ok = [h for h in programados if h['CHECKIN'] >= hoy]
     
     if programados_atrasados:
-        print("\n🕰️  Huéspedes programados con CHECK-IN ATRASADO:")
+        print("\n🕰️  Huéspedes programados con CHECK-IN ATRASADO:")
         print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN PROG':<15}")
         print("-" * 70)
         for h in programados_atrasados:
@@ -231,7 +231,7 @@ def _mostrar_programados(programados, hoy):
         print("-" * 70)
         
     if programados_ok:
-        print("\n🗓️  Huéspedes programados (ordenados por apellido):")
+        print("\n🗓️  Huéspedes programados (ordenados por apellido):")
         print(f"{'APELLIDO':<20} {'NOMBRE':<20} {'HAB':<5} {'CHECK-IN':<15}")
         print("-" * 70)
         for h in programados_ok:
@@ -252,7 +252,6 @@ def _procesar_checkin_y_actualizar(huesped, checkin_definitivo, checkin_programa
         return False
     
     # --- Recolección de datos y actualización (Lógica correcta) ---
-    # Asegúrate que '_pedir_datos' está disponible
     datos_recopilados = _pedir_datos(huesped)
     
     registro_anterior = str(huesped["REGISTRO"] or "")
@@ -501,7 +500,7 @@ def _calcular_y_mostrar_totales(huesped, grand_subtotal):
     dcto_log = ""
     
     print("\n" + "=" * LINE_WIDTH)
-    print(f"{'TOTAL DE CONSUMOS (Bruto):':<{LABEL_WIDTH}} R$ {grand_subtotal:>{VALUE_FORMAT_WIDTH}.2f}")
+    print(f"{'TOTAL DE CONSUMOS:':<{LABEL_WIDTH}} R$ {grand_subtotal:>{VALUE_FORMAT_WIDTH}.2f}")
 
     # --- LÓGICA DE DESCUENTOS ---
     if descuento_str:
@@ -627,7 +626,7 @@ def buscar_huesped():
         3: ("NUMERO", lambda: input("Ingresá el número de huesped: ").strip()),
         4: ("HABITACION", lambda: input("Ingresá el número de habitación: ").strip()),
         5: ("DOCUMENTO", lambda: input("Ingresá el número de documento: ").strip()),
-        6: ("*", None)  # Ver todos
+        6: ("*", None) # Ver todos
     }
 
     leyenda = "\n¿Cómo querés buscar al huesped?\n1. Por apellido\n2. Por nombre\n3. Por número de huesped\n4. Por número de habitación\n5. Por documento\n6. Imprimir todos\n0. Cancelar\n"
@@ -647,25 +646,26 @@ def buscar_huesped():
             if campo == "HABITACION":
                 num_habitacion = get_valor()
                 if not num_habitacion:
-                    print("\n⚠️  El número de habitación no puede estar vacío.")
+                    print("\n⚠️  El número de habitación no puede estar vacío.")
                     continue
+
                 # Delegamos la lógica compleja de HABITACION
-                huesped, fecha_busqueda = _buscar_por_habitacion_y_fecha(db, num_habitacion)
+                huesped, fecha_busqueda = _buscar_por_habitacion_y_fecha(num_habitacion)
                 if huesped is None and fecha_busqueda is None: # Cancelación
-                    return 
+                    return
             
             elif campo == "*":
                 huespedes = db.obtener_todos("SELECT * FROM HUESPEDES ORDER BY LOWER(APELLIDO), LOWER(NOMBRE)")
                 
             elif campo in ("APELLIDO", "NOMBRE"):
                 # Delegamos la lógica de búsqueda por texto
-                huespedes = _buscar_por_nombre_o_apellido(db, campo, get_valor)
+                huespedes = _buscar_por_nombre_o_apellido(campo, get_valor)
                 if huespedes is None: # Cancelación
                     return 
             
             else: # NUMERO o DOCUMENTO
                 # Delegamos la lógica de búsqueda exacta
-                input_ok, huesped = _buscar_por_exacto(db, campo, get_valor)
+                input_ok, huesped = _buscar_por_exacto(campo, get_valor)
                 if not input_ok:
                     continue # Vuelve a pedir la opción si el input falló
             
@@ -692,23 +692,13 @@ def buscar_huesped():
             break # Sale del while True después de mostrar el resultado
             
         else:
-            print("\n⚠️  Opción inválida. Intente nuevamente.")
+            print("\n⚠️  Opción inválida. Intente nuevamente.")
     return
 
 def _buscar_por_habitacion_y_fecha(num_habitacion):
     """Maneja la lógica de búsqueda compleja por HABITACION y FECHA."""
-    
-    # Pedir la fecha para verificar la estadía (manteniendo la lógica original)
-    print("\n📅 Ahora ingresá la fecha para verificar la ocupación.")
-    # NOTA: Debes asegurar que las funciones 'pedir_fecha_valida', 'formatear_fecha', etc.,
-    # estén accesibles en tu entorno.
-    fecha_busqueda = pedir_fecha_valida(
-        "Ingresá la fecha para verificar ocupación ó (0) para cancelar: ", 
-        allow_past=True, # Permitir buscar en fechas pasadas
-        confirmacion=False, # No preguntar si es fecha pasada, solo obtenerla
-        cero=True, # Permite cancelar con '0'
-        vacio = True
-    )
+    leyenda_fecha = "Ingresá la fecha para verificar ocupación ó (0) para cancelar: "
+    fecha_busqueda = pedir_fecha_valida(leyenda_fecha, allow_past=True, confirmacion=False, cero=True, vacio=True)
     
     if fecha_busqueda is None:
         # El usuario ingresó '0'
@@ -719,8 +709,9 @@ def _buscar_por_habitacion_y_fecha(num_habitacion):
     if fecha_busqueda == "":
         fecha_busqueda = date.today().isoformat()
 
-    # La consulta original (con la única mejora de seguridad de usar DATE()
-    # que es crítica para esta operación de rango)
+    # La consulta busca un huésped en esa habitación, cuya fecha de CHECKIN
+    # sea menor o igual a la fecha de búsqueda, y cuya fecha de CHECKOUT
+    # sea mayor o igual a la fecha de búsqueda O sea 'NULL' (todavía abierto).
     query = """
         SELECT * FROM HUESPEDES 
         WHERE HABITACION = ? 
@@ -731,8 +722,14 @@ def _buscar_por_habitacion_y_fecha(num_habitacion):
         LIMIT 1
     """
     
+    # Usamos la misma fecha de búsqueda dos veces para el rango
     huesped = db.obtener_uno(query, (num_habitacion, fecha_busqueda, fecha_busqueda))
-    return huesped, fecha_busqueda
+    
+    if huesped:
+        return huesped, fecha_busqueda
+    else:
+        print(f"\n❌ La habitación {num_habitacion} no estaba ocupada el {formatear_fecha(fecha_busqueda)}.")
+        return None, None
 
 def _buscar_por_nombre_o_apellido(campo, get_valor):
     """Maneja la lógica de búsqueda por texto (LIKE + unidecode)."""
@@ -743,12 +740,14 @@ def _buscar_por_nombre_o_apellido(campo, get_valor):
         
     # 1. Búsqueda en SQL: Traer un subconjunto usando LIKE
     query = f"SELECT * FROM HUESPEDES WHERE LOWER({campo}) LIKE ?"
+    # Añadimos '%' para búsqueda parcial. LOWER() asegura insensibilidad a mayúsculas.
     patron_sql = f"%{valor_normalizado}%"
+    # Obtenemos los huéspedes que *probablemente* coinciden
     huespedes_amplio = db.obtener_todos(query, (patron_sql,))
-    
     # 2. Filtrado final en Python: Asegurar coincidencia de tildes
     huespedes = [
         h for h in huespedes_amplio
+        # Comparamos: valor_normalizado IN (unidecode del valor en BD)
         if valor_normalizado in unidecode(h[campo]).lower()
     ]
     return huespedes
@@ -757,7 +756,7 @@ def _buscar_por_exacto(campo, get_valor):
     """Maneja la lógica de búsqueda exacta por NUMERO o DOCUMENTO."""
     valor_raw = get_valor()
     if not valor_raw:
-        print("\n⚠️  El valor de búsqueda no puede estar vacío.")
+        print("\n⚠️  El valor de búsqueda no puede estar vacío.")
         return False, None # Indica error en el input, no en la BD
 
     query = f"SELECT * FROM HUESPEDES WHERE {campo} = ?"
@@ -1080,6 +1079,84 @@ def eliminar_huesped():
             print("\n❌ Eliminación cancelada.")
             return
 
+@usuarios.requiere_acceso(1)
+def intercambiar_habitacion():
+    """
+    Intercambia dos huéspedes entre habitaciones (solo si ambas están ocupadas y abiertas).
+    Registra la acción y actualiza ambas filas en una sola transacción.
+    """
+    print("\n🔁 INTERCAMBIO DE HUÉSPEDES ENTRE HABITACIONES")
+
+    # 1️⃣ Mostrar huéspedes abiertos (habitaciones ocupadas)
+    abiertas = db.obtener_todos("SELECT HABITACION, APELLIDO, NOMBRE FROM HUESPEDES WHERE ESTADO = 'ABIERTO' ORDER BY HABITACION")
+    if not abiertas:
+        print("\n❌ No hay habitaciones abiertas para intercambiar.")
+        return
+
+    print("\n📋 Habitaciones actualmente ocupadas:")
+    print(f"{'HAB':<5} {'APELLIDO':<20} {'NOMBRE':<20}")
+    print("-" * 45)
+    for h in abiertas:
+        print(f"{h['HABITACION']:<5} {h['APELLIDO'].title():<20} {h['NOMBRE'].title():<20}")
+    print("-" * 45)
+
+    # 2️⃣ Pedir habitaciones
+    hab1 = opcion_menu("\nIngresá el número de la primera habitación ó (0) para cancelar: ", cero=True, minimo=1, maximo=7)
+    if hab1 == 0:
+        print("❌ Intercambio cancelado.")
+        return
+    hab2 = opcion_menu("Ingresá el número de la segunda habitación: ", minimo=1, maximo=7)
+    if hab2 == hab1:
+        print("❌ No se puede intercambiar la misma habitación.")
+        return
+
+    # 3️⃣ Buscar huéspedes activos en ambas habitaciones
+    huesped1 = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", (hab1,))
+    huesped2 = db.obtener_uno("SELECT * FROM HUESPEDES WHERE HABITACION = ? AND ESTADO = 'ABIERTO'", (hab2,))
+
+    if not huesped1 or not huesped2:
+        print("\n❌ Ambas habitaciones deben estar ocupadas con huéspedes abiertos para realizar el intercambio.")
+        return
+
+    # Mostrar quiénes se van a intercambiar
+    print(f"\n🔄 Vas a intercambiar:")
+    print(f"Habitación {hab1}: {huesped1['NOMBRE'].title()} {huesped1['APELLIDO'].title()}")
+    print(f"Habitación {hab2}: {huesped2['NOMBRE'].title()} {huesped2['APELLIDO'].title()}")
+
+    if pedir_confirmacion("\n¿Confirmás el intercambio? (si/no): ") != "si":
+        print("\n❌ Intercambio cancelado por el usuario.")
+        return
+
+    # 4️⃣ Realizar el intercambio dentro de una transacción
+    try:
+        with db.transaccion():
+            # Actualizar habitación del huésped 1
+            _editar_huesped_db(huesped1["NUMERO"], {
+                "HABITACION": hab2,
+                "REGISTRO": f"{huesped1['REGISTRO']}\n---\nIntercambio: movido a habitación {hab2} - {marca_de_tiempo()}"
+            })
+            # Actualizar habitación del huésped 2
+            _editar_huesped_db(huesped2["NUMERO"], {
+                "HABITACION": hab1,
+                "REGISTRO": f"{huesped2['REGISTRO']}\n---\nIntercambio: movido a habitación {hab1} - {marca_de_tiempo()}"
+            })
+
+        print(f"\n✔ Intercambio realizado con éxito entre las habitaciones {hab1} y {hab2}.")
+
+        # 5️⃣ Registrar en log
+        log = (
+            f"[{marca_de_tiempo()}] INTERCAMBIO DE HUÉSPEDES:\n"
+            f"Habitación {hab1} ↔ {hab2}\n"
+            f"{huesped1['APELLIDO'].title()}, {huesped1['NOMBRE'].title()} ↔ "
+            f"{huesped2['APELLIDO'].title()}, {huesped2['NOMBRE'].title()}\n"
+            f"Acción realizada por: {usuarios.sesion.usuario}"
+        )
+        registrar_log("huespedes_cambios.log", log)
+
+    except Exception as e:
+        print(f"\n❌ Error al realizar el intercambio: {e}")
+        return
+
 @usuarios.requiere_acceso(2)
 def ver_registro():
     leyenda = "Ingresá el número de huésped para ver su historial, (*) para buscar ó (0) para cancelar: "
@@ -1109,7 +1186,3 @@ def ver_registro():
                 print(f"{i}. {linea.strip()}\n")
 
         return
-
-
-
-
