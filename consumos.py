@@ -233,7 +233,7 @@ def ver_consumos():
             if pedir_confirmacion("Todos los consumos de esta estadía fueron pagados. ¿Querés verlos igualmente? (si/no): ") == "si":
                 agrupados = _preparar_consumos(consumos_pagos)
                 print(f"\nHistorial de consumos PAGADOS de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
-                _imprimir_consumos(huesped, agrupados, incluir_columna_pagado=True)
+                _imprimir_consumos(agrupados, incluir_columna_pagado=True)
             return
 
         # Mostrar NO PAGOS
@@ -252,7 +252,7 @@ def ver_consumos():
         if consumos_pagos and pedir_confirmacion("\n💰 Hay consumos ya pagos. ¿Querés verlos también? (si/no): ") == "si":
                 agrupados_pagos = _preparar_consumos(consumos_pagos)
                 print(f"\nHistorial de consumos PAGADOS de la habitación {huesped['HABITACION']}, huésped {huesped['NOMBRE'].title()} {huesped['APELLIDO'].title()}:\n")
-                _imprimir_consumos(huesped, agrupados_pagos, incluir_columna_pagado=True)
+                _imprimir_consumos(agrupados_pagos, incluir_columna_pagado=True)
         return
 
 def _obtener_huesped(habitacion):
