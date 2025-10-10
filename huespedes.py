@@ -620,6 +620,10 @@ def _manejar_pago_y_registro(numero_huesped, registro_actual, total_pendiente, g
 
 @usuarios.requiere_acceso(1)
 def buscar_huesped():
+    """
+    Función principal refactorizada para buscar un huésped,
+    enfocada principalmente en la interacción del menú.
+    """
     opciones = {
         1: ("APELLIDO", lambda: pedir_nombre("Ingresá el apellido: ")),
         2: ("NOMBRE", lambda: pedir_nombre("Ingresá el nombre: ")),
@@ -631,102 +635,98 @@ def buscar_huesped():
 
     leyenda = "\n¿Cómo querés buscar al huesped?\n1. Por apellido\n2. Por nombre\n3. Por número de huesped\n4. Por número de habitación\n5. Por documento\n6. Imprimir todos\n0. Cancelar\n"
     while True:
-        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=6,)
+        opcion = opcion_menu(leyenda, cero=True, minimo=1, maximo=6)
 
         if opcion == 0:
             return
 
         if opcion in opciones:
             campo, get_valor = opciones[opcion]
-            huesped = None
-            huespedes = None
-            fecha_busqueda = None
-            input_ok = True # Flag para la validación de input
-
-            if campo == "HABITACION":
-                num_habitacion = get_valor()
-                if not num_habitacion:
-                    print("\n⚠️  El número de habitación no puede estar vacío.")
-                    continue
-
-                # Delegamos la lógica compleja de HABITACION
-                huesped, fecha_busqueda = _buscar_por_habitacion_y_fecha(num_habitacion)
-                if huesped is None and fecha_busqueda is None: # Cancelación
-                    return
             
-            elif campo == "*":
-                huespedes = db.obtener_todos("""
-                    SELECT *
-                    FROM HUESPEDES
-                    ORDER BY
-                        -- 1. PRIORIDAD PRINCIPAL: Ordena los grupos de estado (1=ABIERTO, 2=PROGRAMADO, 3=CERRADO)
-                        CASE ESTADO
-                            WHEN 'ABIERTO' THEN 1
-                            WHEN 'PROGRAMADO' THEN 2
-                            WHEN 'CERRADO' THEN 3
-                            ELSE 4
-                        END,
-
-                        -- 2. CRITERIO PARA ABIERTOS: Ordena por HABITACION (asumo que es un número o texto ordenable)
-                        CASE ESTADO
-                            WHEN 'ABIERTO' THEN HABITACION
-                            ELSE NULL 
-                        END,
-
-                        -- 3. CRITERIO PARA PROGRAMADOS: Ordena por CHECKIN (tratado como fecha con DATE())
-                        CASE ESTADO
-                            WHEN 'PROGRAMADO' THEN DATE(CHECKIN)
-                            ELSE NULL 
-                        END,
-
-                        -- 4. CRITERIO PARA CERRADOS: Ordena por CHECKOUT (tratado como fecha con DATE())
-                        CASE ESTADO
-                            WHEN 'CERRADO' THEN DATE(CHECKOUT)
-                            ELSE NULL 
-                        END DESC,
-
-                        -- 5. CRITERIOS SECUNDARIOS FINALES: Desempate por apellido y nombre
-                        LOWER(APELLIDO),
-                        LOWER(NOMBRE)
-                """)
-                
-            elif campo in ("APELLIDO", "NOMBRE"):
-                # Delegamos la lógica de búsqueda por texto
-                huespedes = _buscar_por_nombre_o_apellido(campo, get_valor)
-                if huespedes is None: # Cancelación
-                    return 
+            # 💡 Delegamos toda la lógica de ejecución y resultado a la función auxiliar
+            resultado_busqueda = _ejecutar_busqueda_y_mostrar_resultado(campo, get_valor)
             
-            else: # NUMERO o DOCUMENTO
-                # Delegamos la lógica de búsqueda exacta
-                input_ok, huesped = _buscar_por_exacto(campo, get_valor)
-                if not input_ok:
-                    continue # Vuelve a pedir la opción si el input falló
-            
-            # --- Lógica de Impresión de Resultados ---
-            
-            # Caso de búsqueda por HABITACION (ya que sale inmediatamente después)
-            if campo == "HABITACION":
-                if huesped:
-                    print(f"\n✔ Huésped encontrado en la habitación {num_habitacion} el {formatear_fecha(fecha_busqueda)}.")
-                    imprimir_huesped(huesped)
-                else:
-                    print(f"\n❌ La habitación {num_habitacion} no estaba ocupada el {formatear_fecha(fecha_busqueda)}.")
-                return # Terminamos la función ya que es una búsqueda específica
-
-            # Casos de búsqueda que devuelven listas o un solo resultado
-            if huespedes:
-                print("\nListado de huéspedes:")
-                imprimir_huespedes(huespedes)
-            elif huesped:
-                imprimir_huesped(huesped)
-            else:
-                print("\n❌ No se encontraron coincidencias.")
-            
-            break # Sale del while True después de mostrar el resultado
+            if resultado_busqueda is True:
+                # Búsqueda exitosa y resultados mostrados (salir del bucle)
+                break 
+            elif resultado_busqueda is None:
+                # Cancelación o caso HABITACION (salir de la función)
+                return 
+            # Si resultado_busqueda es False, el bucle continúa (pide nueva opción)
             
         else:
             print("\n⚠️  Opción inválida. Intente nuevamente.")
     return
+
+def _ejecutar_busqueda_y_mostrar_resultado(campo, get_valor):
+    """
+    Función auxiliar para ejecutar la búsqueda y mostrar los resultados.
+    Devuelve True si la búsqueda fue exitosa y False si se debe continuar
+    el bucle (ej. input inválido) o None si se debe cancelar/salir.
+    """
+    huesped = None
+    huespedes = None
+    fecha_busqueda = None
+    input_ok = True
+
+    # --- 1. Lógica de Búsqueda ---
+    if campo == "HABITACION":
+        num_habitacion = get_valor()
+        if not num_habitacion:
+            print("\n⚠️  El número de habitación no puede estar vacío.")
+            return False # Continúa el bucle (vuelve a pedir opción)
+
+        # Delegamos la lógica compleja de HABITACION
+        huesped, fecha_busqueda = _buscar_por_habitacion_y_fecha(num_habitacion)
+        if huesped is None and fecha_busqueda is None: # Cancelación
+            return None # Señal para salir del menú
+
+    elif campo == "*":
+        huespedes = db.obtener_todos("""
+            -- Consulta SQL simplificada, asumo que 'db.obtener_todos' existe
+            SELECT * FROM HUESPEDES
+            ORDER BY
+                CASE ESTADO WHEN 'ABIERTO' THEN 1 WHEN 'PROGRAMADO' THEN 2 WHEN 'CERRADO' THEN 3 ELSE 4 END,
+                CASE ESTADO WHEN 'ABIERTO' THEN HABITACION ELSE NULL END,
+                CASE ESTADO WHEN 'PROGRAMADO' THEN DATE(CHECKIN) ELSE NULL END,
+                CASE ESTADO WHEN 'CERRADO' THEN DATE(CHECKOUT) ELSE NULL END DESC,
+                LOWER(APELLIDO),
+                LOWER(NOMBRE)
+        """)
+
+    elif campo in ("APELLIDO", "NOMBRE"):
+        # Delegamos la lógica de búsqueda por texto
+        huespedes = _buscar_por_nombre_o_apellido(campo, get_valor)
+        if huespedes is None: # Cancelación
+            return None
+
+    else: # NUMERO o DOCUMENTO (Búsqueda exacta)
+        # Delegamos la lógica de búsqueda exacta
+        input_ok, huesped = _buscar_por_exacto(campo, get_valor)
+        if not input_ok:
+            return False # Continúa el bucle
+
+    # --- 2. Lógica de Impresión de Resultados ---
+
+    # Caso de búsqueda por HABITACION: Caso especial que debe salir
+    if campo == "HABITACION":
+        if huesped:
+            print(f"\n✔ Huésped encontrado en la habitación {num_habitacion} el {formatear_fecha(fecha_busqueda)}.")
+            imprimir_huesped(huesped)
+        else:
+            print(f"\n❌ La habitación {num_habitacion} no estaba ocupada el {formatear_fecha(fecha_busqueda)}.")
+        return None # Señal para salir
+
+    # Casos de búsqueda que devuelven listas o un solo resultado
+    if huespedes:
+        print("\nListado de huéspedes:")
+        imprimir_huespedes(huespedes)
+    elif huesped:
+        imprimir_huesped(huesped)
+    else:
+        print("\n❌ No se encontraron coincidencias.")
+
+    return True # Búsqueda finalizada con éxito, salir del menú
 
 def _buscar_por_habitacion_y_fecha(num_habitacion):
     """Maneja la lógica de búsqueda compleja por HABITACION y FECHA."""
