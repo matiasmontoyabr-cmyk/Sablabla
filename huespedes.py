@@ -1152,7 +1152,7 @@ def intercambiar_habitacion():
         return
 
     # Mostrar quiénes se van a intercambiar
-    print(f"\n🔄 Vas a intercambiar:")
+    print("\n🔄 Vas a intercambiar:")
     print(f"Habitación {hab1}: {huesped1['NOMBRE'].title()} {huesped1['APELLIDO'].title()}")
     print(f"Habitación {hab2}: {huesped2['NOMBRE'].title()} {huesped2['APELLIDO'].title()}")
 
